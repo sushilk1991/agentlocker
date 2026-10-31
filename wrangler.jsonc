@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agentlocker", "main": "src/index.ts",
+  "compatibility_date": "2025-10-14", "compatibility_flags": ["nodejs_compat"], "workers_dev": true,
+  "d1_databases": [{"binding": "DB", "database_name": "agentlocker", "database_id": "", "migrations_dir": "migrations"}],
+  "r2_buckets": [{"binding": "FILES", "bucket_name": "agentlocker-files"}],
+  "triggers": {"crons": ["* * * * *"]},
+  "vars": {"PUBLIC_ORIGIN": "", "DEPLOYMENT_ID": "", "ENCRYPTION_KEY_VERSION": "1"},
+  "observability": {"enabled": false}
+}

@@ -1,0 +1,53 @@
+{
+  "name": "agentlocker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "typecheck": "tsc --noEmit && tsc -p packages/sdk/tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:mcp": "node --import tsx scripts/test-mcp.ts",
+    "test:browser": "playwright test",
+    "test:smoke": "node --import tsx scripts/smoke.ts",
+    "db:local": "wrangler d1 migrations apply DB --local",
+    "db:remote": "wrangler d1 migrations apply DB --remote",
+    "deploy": "node scripts/deploy.mjs",
+    "setup:local": "node scripts/setup-local.mjs",
+    "cli": "tsx packages/cli/src/index.ts",
+    "sdk:build": "tsc -p packages/sdk/tsconfig.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20251118.0",
+    "@playwright/test": "1.56.1",
+    "@types/node": "22.18.12",
+    "esbuild": "0.25.11",
+    "miniflare": "4.20251118.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4",
+    "wrangler": "4.50.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "OWNER_TOKEN": {
+        "description": "Owner sign-in token. Generate 32 random bytes as hex. Save it in a password manager."
+      },
+      "LOCKER_ENCRYPTION_KEY": {
+        "description": "Separate random 32-byte key, base64 encoded. Keep an offline backup."
+      }
+    }
+  }
+}
