@@ -7,7 +7,7 @@ import { current, download, fileBytes, fileMetadata, listFiles, pageLimit } from
 import { executeProxy, finishAttempt } from './proxy';
 import { listSecrets } from './secrets';
 import { canonical, open, seal, unbase64 } from './security';
-import { all, assert, Context, json, LockerError, NOW, one, opaqueId, Row, statement } from './types';
+import { all, assert, Context, json, LIMITS, LockerError, NOW, one, opaqueId, Row, statement } from './types';
 
 async function transition(c: Context,a: Row,status: 'expired'|'invalidated',code: string) {
  try {
@@ -157,7 +157,7 @@ async function executeRead(c: Context,a: Row,input: any) {
   const f=await current(c,a.target); assert(f&&f.current_revision_id===input.revision,'revision_conflict',409);
   await fileBytes(c,input.revision);
   result=input.parameters.metadata?fileMetadata(f):{revision:input.revision,hash:input.hash,length:input.length};
- } else if(a.operation==='secrets.list')result=await listSecrets(c);
+ } else if(a.operation==='secrets.list')result=await listSecrets(c,input.parameters?.limit,input.parameters?.cursor);
  else {assert(a.operation==='files.list','invalid_operation');result=await listFiles(c,a.target,input.parameters.limit,input.parameters.cursor);}
  const encrypted=await seal(c.env,'action.result',a.id,1,canonical(result));
  await c.env.DB.batch([
@@ -168,7 +168,7 @@ async function executeRead(c: Context,a: Row,input: any) {
   auditStatement(c,'action.result',a.target,'allow','succeeded',{actionId:a.id,attemptId:a.claim_id}),
  ]);
 }
-export async function actionResult(c: Context,id: string) {
+export async function actionResult(c: Context,id: string,fileLimit=LIMITS.file) {
  const a=await one(c,'SELECT * FROM actions WHERE id=?',id); assert(a,'not_found_or_not_allowed',404); await actionAccess(c,a);
  assert(a.status==='succeeded','result_not_ready',409);
  if(c.actor.kind!=='owner'&&['files.list','secrets.list'].includes(a.operation))assert(await one(c,'SELECT 1 FROM settings WHERE id=1 AND config_version=?',a.config_version),'not_found_or_not_allowed',404);
@@ -176,7 +176,7 @@ export async function actionResult(c: Context,id: string) {
  await audit(c,'action.result.read',a.target,'allow','intent',{actionId:id});
  let response: Response;
  if(a.operation==='file.read'&&JSON.parse(a.result_metadata).kind==='file') {
-  const {data,r}=await fileBytes(c,a.result_revision); response=download(data,r);
+  const {data,r}=await fileBytes(c,a.result_revision,fileLimit); response=download(data,r);
  } else if(a.result_cipher) {
   const result=JSON.parse(await open(c.env,'action.result',id,1,a.result_cipher,a.result_nonce,a.result_key_version));
   if(c.actor.kind!=='owner') {

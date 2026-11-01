@@ -1,7 +1,8 @@
 import { active, bump, requireOwner, requireSecret } from './auth';
 import { audit, auditStatement } from './audit';
 import { changedOne, storageError } from './file-transaction';
-import { canonical, host, injection, seal, secretValue, sha } from './security';
+import { base64, bytes, canonical, host, injection, open, seal, secretValue, sha, unbase64 } from './security';
+import { pageLimit } from './files';
 import { all, assert, Context, NOW, one, opaqueId, Row, settings, statement } from './types';
 import { DAY, idempotencyKey } from './file-actions';
 
@@ -53,22 +54,34 @@ export async function disableSecret(c: Context,id: string,version: number) {
  requireOwner(c); const s=await one(c,'SELECT * FROM secrets WHERE id=?',id); assert(s,'not_found',404);
  return saveSecret(c,{name:s.name,hosts:await secretHosts(c,id),injection_header:s.injection_header,scheme:s.scheme,enabled:false},id,version);
 }
-export async function listSecrets(c: Context) {
+export async function listSecrets(c: Context,limit=100,cursor?:string) {
  await active(c);
- const rows=await all(c,`SELECT s.* FROM secrets s ${c.actor.kind==='owner'?'':`WHERE s.enabled=1 AND EXISTS(SELECT 1 FROM secret_grants g WHERE g.secret_id=s.id AND g.agent_id=? AND (g.expires_at IS NULL OR g.expires_at>${NOW}))`} ORDER BY s.name LIMIT 100`,...(c.actor.kind==='owner'?[]:[c.actor.agentId]));
+ pageLimit(limit);
+ const identity=c.actor.kind==='owner'?'owner':`agent:${c.actor.agentId}`,version=(await one(c,'SELECT config_version FROM settings WHERE id=1'))!.config_version;
+ let after='';
+ if(cursor) {
+  try {
+   assert(cursor.length<=8192,'invalid_cursor');
+   const e=JSON.parse(new TextDecoder().decode(unbase64(cursor))),v=JSON.parse(await open(c.env,'secrets.cursor',identity,1,e.cipher,e.nonce,e.keyVersion));
+   assert(v.version===version&&typeof v.after==='string','invalid_cursor');after=v.after;
+  } catch {assert(false,'invalid_cursor');}
+ }
+ const rows=await all(c,`SELECT s.* FROM secrets s WHERE s.name>? ${c.actor.kind==='owner'?'':`AND s.enabled=1 AND EXISTS(SELECT 1 FROM secret_grants g WHERE g.secret_id=s.id AND g.agent_id=? AND (g.expires_at IS NULL OR g.expires_at>${NOW}))`} ORDER BY s.name LIMIT ?`,after,...(c.actor.kind==='owner'?[]:[c.actor.agentId]),limit+1);
+ const page=rows.slice(0,limit);
+ const next=rows.length>limit?base64(bytes(JSON.stringify(await seal(c.env,'secrets.cursor',identity,1,canonical({version,after:page.at(-1)!.name}))))):null;
  await audit(c,'secrets.list','/','allow','listed');
- return {secrets:await Promise.all(rows.map(s=>secretMetadata(c,s)))};
+ return {secrets:await Promise.all(page.map(s=>secretMetadata(c,s))),cursor:next};
 }
 export async function selectedSecret(c: Context,name: string) {secretName(name); return requireSecret(c,name);}
 
-export async function gateSecretList(c: Context,key: string|null) {
+export async function gateSecretList(c: Context,key: string|null,parameters?:{limit:number;cursor?:string}) {
  await active(c); if(c.actor.kind==='owner')return null;
  const names=await all(c,`SELECT s.id FROM secrets s JOIN secret_grants g ON g.secret_id=s.id WHERE g.agent_id=? AND s.enabled=1 AND (g.expires_at IS NULL OR g.expires_at>${NOW})`,c.actor.agentId);
  const rules=await all(c,"SELECT secret_id FROM approval_rules WHERE operation='secrets.list'");
  if(!names.length||!rules.some(r=>!r.secret_id||names.some(s=>s.id===r.secret_id)))return null;
  idempotencyKey(key!);
- const input={operation:'secrets.list',target:'/',secret_ids:names.map(s=>s.id).sort()};
- const submission=await sha(canonical({operation:'secrets.list'})), identity=`agent:${c.actor.agentId}`;
+ const input={operation:'secrets.list',target:'/',secret_ids:names.map(s=>s.id).sort(),...(parameters?{parameters}:{})};
+ const submission=await sha(canonical({operation:'secrets.list',...(parameters?{parameters}:{})})), identity=`agent:${c.actor.agentId}`;
  const replay=async()=>{
   const old=await one(c,`SELECT k.input_digest,a.* FROM idempotency_keys k JOIN actions a ON a.id=k.action_id WHERE k.identity=? AND k.caller_key=? AND k.expires_at>${NOW}`,identity,key);
   if(!old)return null;assert(old.input_digest===submission,'idempotency_conflict',409);

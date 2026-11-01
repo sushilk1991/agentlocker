@@ -1,4 +1,5 @@
 import { staticAsset } from './web';
+import { handleMcp } from './mcp';
 import { ownerSession, setupOwner, listAgents, agentGrants, overview } from './owner';
 import { readAudit, exportAudit } from './audit-query';
 import { createAgent, issueToken, replaceGrants, revokeToken, setAgentStatus } from './agents';
@@ -51,6 +52,14 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
   const asset = staticAsset(request,env);
   if (asset) return asset;
   validateConfig(env);
+  if(url.pathname==='/mcp') {
+   operation='mcp.request';target='/mcp';query(url,[]);
+   c.actor=await authenticate(c,request,false);
+   await ready(c);
+   await rate(c,`token:${c.actor.tokenId}`,'file',120);
+   await rate(c,`agent:${c.actor.agentId}`,'file',240);
+   return secureResponse(await handleMcp(c,request),c);
+  }
   assert(url.pathname.startsWith('/api/v1/'), 'not_found', 404);
   const owner = url.pathname.startsWith('/api/v1/owner/');
   c.actor = await authenticate(c, request, owner);
