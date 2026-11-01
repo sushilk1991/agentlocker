@@ -188,3 +188,10 @@
 - Fixed audit timestamp normalization and polling test races. Both focused checks passed **4/4** variations. Polling now awaits responses/UI completion instead of fixed waits against a paused clock. One existing grant-conflict check timed out once, then passed unchanged in later runs. No service or timeout changes were made for it.
 - Final gate passed: `npm run typecheck`; `npm test` **411/411 across 23/23 files** (275.39 s); `npm run test:mcp` **4/4 real-client groups**; `npm run test:browser` **88/88 across 3/3 files** (181.87 s); `npm run build` (Vite plus Worker deploy dry-run); `git diff --check`. Kept `fileParallelism: false`; all test browsers, servers, and runtimes stopped.
 - No API/schema changes, push, publication, or deployment. Deployment, named-agent compatibility, and backup/recovery gaps remain unchanged. Native iOS push is future work. Stopped at this chunk.
+
+## UI rewrite shipped (02 Nov 2026)
+- ~03:00 IST: reran the full gate on 15b3c27: typecheck clean; `npm test` 411/411 across 23 files; `npm run test:mcp` 4/4 groups; `npm run test:browser` 88/88 across 3 files; build (Vite plus Worker dry-run) OK; `git diff --check` clean.
+- Checked tracked files and the new commits for .dev.vars, .agentlocker, .wrangler, dist, dist-web and live credential values: none.
+- Redeployed with `npm run deploy` to the same Worker, D1 `agentlocker` and private R2 `agentlocker-files`; remote migrations applied (no schema change). Live: https://agentlocker.sushilk-1991.workers.dev. The React UI loads over HTTPS with strict CSP, hashed assets serve 200, deep links work, `/legacy` is gone (404), and a headless browser saw the sign-in screen with no console errors.
+- Live smoke passed 16/16 checks plus cleanup (app 0.1.0, schema 4). Pushed main to origin (605ac7b..15b3c27).
+- Open: 9 dev-tool npm advisories; fresh-account deploy-button test; backup runbook; captain's call on whether reads through stored keys skip approval; plain HTTP requests get an empty 500 instead of a redirect to HTTPS. Approvals stay web-app only; native iOS push is future work.
