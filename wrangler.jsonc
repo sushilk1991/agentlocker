@@ -28,7 +28,10 @@
     }
   ],
 
-  // The Worker imports these small assets as text. No assets binding is needed.
+  // The Worker runs first so every asset receives origin checks and strict CSP.
+  "assets": { "directory": "./dist-web", "binding": "ASSETS", "run_worker_first": true },
+
+  // Keep the original management app available during the staged migration.
   "rules": [
     {
       "type": "Text",

@@ -21,13 +21,13 @@ permission to install system packages.
 
 | Command | What it checks |
 | --- | --- |
-| `npm run typecheck` | Worker, CLI, tests, and SDK types. |
+| `npm run typecheck` | Worker, CLI, SDK, and React app types. |
 | `npm test` | Vitest units, local D1/R2 integration, browser checks, and client tests. |
 | `npm run test:browser` | Owner app in Chromium, including polling and complete reviews. |
 | `npm run test:mcp` | Official MCP client against a real disposable `wrangler dev` process. |
 | `npm run test:clients` | SDK/CLI units and real local HTTP and Worker clients. |
 | `npm run clients:build` | SDK declarations and standalone CLI output. |
-| `npm run build` | Wrangler bundle with `--dry-run`; no deployment. |
+| `npm run build` | Vite UI build, then Wrangler `--dry-run`; no deployment. |
 
 Tests use production SQL migrations and disposable credentials. They dispose
 their runtimes and stop child servers. Keep Vitest `fileParallelism: false`.
@@ -103,3 +103,26 @@ npm run test:mcp
 Update the relevant guide and `PROGRESS.md` with observed results. State any
 remaining screen, compatibility, or deployment gap. Do not deploy or publish as
 part of a local check.
+
+## Owner UI build
+
+The React and TypeScript app lives in `web/`. Vite and Tailwind build it into
+ignored `dist-web/`. UI primitives live in `web/src/components/ui/`. Routes load
+separately. The typed owner client calls the existing HTTP routes.
+
+`npm run web:build` builds only the UI. `npm run dev` builds it before starting
+Wrangler. After a UI edit, rebuild and reload. `npm run build` builds the UI and
+then runs the Worker deploy dry-run. The deployment script builds the UI before
+any remote step. The Cloudflare button still uses `npm run deploy`.
+
+Workers static assets use `ASSETS` with `run_worker_first: true`. Only known app
+paths fall back to the entry HTML. API, MCP, health, and unknown paths remain
+Worker routes. The Worker applies origin checks, no-store, and CSP to assets.
+Scripts load from this origin. Runtime Radix and Sonner styles use a fresh style
+nonce from the HTML response. CSP permits neither inline scripts nor arbitrary
+inline styles. The Vite Sonner transform fails if its expected integration point
+changes during a dependency upgrade.
+
+Browser tests build production assets once before using real Miniflare static
+assets, D1, and R2. The React approval checks run at 1280 and 390 pixels. Existing
+management checks continue against `/legacy`. Those screens move in later chunks.

@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 
 let f:Awaited<ReturnType<typeof database>>,browser:Browser,page:Page;
 const origin='http://127.0.0.1:18765';
-async function login() {await page.goto(origin);await page.getByLabel('Owner token',{exact:true}).fill(f.env.OWNER_TOKEN);await page.getByRole('button',{name:'Sign in',exact:true}).click();}
+async function login() {await page.goto(origin+'/legacy');await page.getByLabel('Owner token',{exact:true}).fill(f.env.OWNER_TOKEN);await page.getByRole('button',{name:'Sign in',exact:true}).click();}
 async function downloadBytes(button:ReturnType<Page['getByRole']>) {
  const waiting=page.waitForEvent('download');await button.click();return readFile((await (await waiting).path())!);
 }
@@ -233,6 +233,165 @@ describe('owner app in Chromium with real Worker, D1, and R2',()=>{
   await ui.poll(()=>calls).toBe(hidden+1);fail=true;
   await new Promise(r=>setTimeout(r,70));await advance(15000);await advance(15000);await advance(1000);await ui(page.locator('#stale')).toBeVisible();
   await page.getByRole('button',{name:'Sign out',exact:true}).click();await page.unroute('**/owner/overview?**');
+ });
+
+});
+
+
+async function loginReact() {
+ await page.goto(origin); await page.getByLabel('Owner token', {exact:true}).fill(f.env.OWNER_TOKEN);
+ await page.getByRole('button', {name:'Sign in',exact:true}).click();
+ await ui(page.getByRole('heading', {name:'Approvals',exact:true})).toBeVisible();
+}
+async function signOutReact() {
+ if (await page.getByRole('button', {name:'Open navigation'}).isVisible()) await page.getByRole('button', {name:'Open navigation'}).click();
+ await page.getByRole('button', {name:'Sign out',exact:true}).click();
+ await ui(page.getByRole('heading', {name:'Sign in to your locker'})).toBeVisible();
+}
+
+describe.each([1280, 390])('React owner approvals at %ipx with real Worker, D1, R2', width => {
+ beforeAll(async () => {f=await database(true,true,undefined,origin);browser=await chromium.launch({headless:true});page=await browser.newPage({viewport:{width,height:900}});page.setDefaultTimeout(5000);});
+ afterAll(async () => {await browser?.close();await f?.runtime.dispose();});
+ it('sets up, keeps credentials in memory, persists only theme, navigates, and clears sign-out state', async () => {
+  await f.db.prepare('UPDATE settings SET setup_complete=0').run();
+  const errors: string[]=[];page.on('pageerror', error=>errors.push(error.message));
+  await page.addInitScript(()=>{(window as any).cspViolations=[];document.addEventListener('securitypolicyviolation', e=>(window as any).cspViolations.push(e.violatedDirective));});
+  await page.goto(origin+'/approvals');await page.getByLabel('Owner token',{exact:true}).fill(f.env.OWNER_TOKEN);await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  await ui(page.getByRole('heading',{name:'Set up your locker'})).toBeVisible();
+  await page.getByLabel('I saved my owner token').check();await page.getByRole('button',{name:'Confirm and finish setup'}).click();
+  await ui(page.getByRole('heading',{name:'Approvals',exact:true})).toBeVisible();
+  await ui(page.getByText('All clear for now')).toBeVisible();
+  expect(await page.evaluate(()=>({local:Object.keys(localStorage),session:Object.keys(sessionStorage),cookies:document.cookie}))).toEqual({local:[],session:[],cookies:''});
+  expect(await page.locator('body').innerText()).not.toContain(f.env.OWNER_TOKEN);expect(page.url()).not.toContain(f.env.OWNER_TOKEN);
+  if(width===390)await page.getByRole('button',{name:'Open navigation'}).click();
+  await page.getByRole('button',{name:'Theme: system. Switch to light'}).click();
+  await page.getByRole('button',{name:'Theme: light. Switch to dark'}).click();
+  expect(await page.evaluate(()=>document.documentElement.classList.contains('dark'))).toBe(true);
+  await page.getByRole('link',{name:'Files',exact:true}).click();await ui(page.getByRole('heading',{name:'This screen is in the existing app'})).toBeVisible();
+  if(width===390)await page.getByRole('button',{name:'Open navigation'}).click();
+  await page.getByRole('link',{name:'Approvals',exact:false}).click();await ui(page.getByRole('heading',{name:'Review requests'})).toBeVisible();
+  await signOutReact();await page.reload();await ui(page.getByRole('heading',{name:'Sign in to your locker'})).toBeVisible();
+  expect(await page.evaluate(()=>localStorage.getItem('locker-theme'))).toBe('dark');
+  expect(await page.evaluate(()=>(window as any).cspViolations)).toEqual([]);expect(errors).toEqual([]);
+ });
+ it('loads complete inert request data before approval and applies an explicit batch decision',async()=>{
+  const agent=await setupAgent(f),body='a'.repeat(7000)+'\nDANGEROUS_SUFFIX <script>window.pwned=1</script>\u001b\u202e';
+  const pending=await submitProxy(agent.c,{secret:agent.secret.name,url:'https://api.example.com/send?complete=tail',method:'POST',body_text:body},key());
+  const file=await submitWrite(agent.c,'/mine/review.bin',new Uint8Array([0,255,1,128]),'application/octet-stream',null,key());
+  const deletion=await submitDelete(agent.c,'/mine/review.bin',file.result_revision!,key());
+  await loginReact();
+  await ui(page.locator('#approval-list input[type=checkbox]:checked')).toHaveCount(0);
+  await page.route('**/owner/approvals/*/content',async route=>{await new Promise(r=>setTimeout(r,250));await route.continue();});
+  await page.locator('#approval-list label').filter({hasText:pending.target??'proxy.request'}).getByRole('checkbox').check();
+  await ui(page.getByRole('button',{name:'Approve 1 selected',exact:true})).toBeEnabled();
+  await ui(page.locator('#review-list')).toContainText('DANGEROUS_SUFFIX');await ui(page.locator('#review-list')).toContainText('\\u202e');
+  await ui(page.locator('#review-list')).toContainText('Credential placeholder:');expect(await page.evaluate(()=>('pwned' in window))).toBe(false);
+  await page.locator('#approval-list label').filter({hasText:'file.delete'}).getByRole('checkbox').check();
+  await ui(page.getByRole('button',{name:'Approve 2 selected',exact:true})).toBeDisabled();await ui(page.getByRole('button',{name:'Approve 2 selected',exact:true})).toBeEnabled();
+  await ui(page.locator('#review-list')).toContainText('AP8BgA==');
+  await page.screenshot({path:`/tmp/agentlocker-react-${width}.png`,fullPage:false});
+  await page.getByRole('button',{name:'Deny 2 selected',exact:true}).click();await page.getByRole('alertdialog').getByRole('button',{name:'Confirm decision'}).click();
+  await ui(page.locator('#decision-result')).toContainText('denied');
+  const rows=await f.db.prepare('SELECT status FROM actions WHERE id IN(?,?)').bind(pending.id,deletion.id).all<any>();expect(rows.results.map(r=>r.status)).toEqual(['denied','denied']);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await signOutReact();await ui(page.locator('#review-list')).toHaveCount(0);
+ });
+ it('loads and verifies a complete 10 MiB replacement without hiding its tail',async()=>{
+  const agent=await setupAgent(f),path='/mine/large.txt',tail='DANGEROUS_REPLACEMENT_SUFFIX';
+  const initial=await submitWrite(agent.c,path,new TextEncoder().encode('original'),'text/plain',null,key());
+  const bytes=new Uint8Array(10*1024*1024).fill(97);bytes.set(new TextEncoder().encode(tail),bytes.length-tail.length);
+  const pending=await submitWrite(agent.c,path,bytes,'text/plain',initial.result_revision!,key());
+  await loginReact();
+  await page.locator('#approval-list label').filter({hasText:path}).getByRole('checkbox').check();
+  await ui(page.getByRole('button',{name:'Approve 1 selected',exact:true})).toBeEnabled({timeout:10000});
+  await page.getByText('UTF-8 text: all 214 sections, including the final bytes',{exact:true}).click();
+  const textSections=page.locator('#review-list details').filter({has:page.getByText('UTF-8 text: all 214 sections, including the final bytes',{exact:true})}).first();
+  await textSections.getByText('Section 214 of 214 · text positions 10469377–10485760 of 10485760',{exact:true}).click();
+  await ui(page.locator('#review-list pre').filter({hasText:'DANGEROUS_REPLACEMENT_SUFFIX'})).toContainText('DANGEROUS_REPLACEMENT_SUFFIX');
+  const content=page.waitForEvent('download');await page.getByRole('button',{name:'Download complete content',exact:true}).click();
+  const saved=await (await content).path();const {readFile}=await import('node:fs/promises');expect((await readFile(saved!)).equals(Buffer.from(bytes))).toBe(true);
+  await page.getByRole('button',{name:'Approve this request',exact:true}).click();await page.getByRole('alertdialog').getByRole('button',{name:'Confirm decision'}).click();
+  await ui(page.locator('#decision-result')).toContainText('ready');
+  await ui.poll(async()=> (await f.db.prepare('SELECT status FROM actions WHERE id=?').bind(pending.id).first<any>()).status).toBe('succeeded');
+  await signOutReact();
+ });
+ it('blocks approval when the displayed action digest fails verification',async()=>{
+  const agent=await setupAgent(f),pending=await submitProxy(agent.c,{secret:agent.secret.name,url:'https://api.example.com/review',method:'GET'},key());
+  await page.route('**/owner/approvals/'+pending.approval_id,async route=>{const response=await route.fetch();const data=await response.json();data.digest='0'.repeat(64);await route.fulfill({response,json:data});});
+  await loginReact();
+  await page.locator('#approval-list label').filter({hasText:'proxy.request'}).getByRole('checkbox').check();
+  await ui(page.locator('#review-list')).toContainText('Action digest does not match');
+  await ui(page.getByRole('button',{name:'Approve 1 selected',exact:true})).toBeDisabled();
+  expect((await f.db.prepare('SELECT status FROM actions WHERE id=?').bind(pending.id).first<any>()).status).toBe('pending');
+  await page.unroute('**/owner/approvals/'+pending.approval_id);await signOutReact();
+ });
+ it('blocks tampered content, permits denial, and leaves the file unchanged', async () => {
+  const agent=await setupAgent(f),path='/mine/tamper.bin';
+  const initial=await submitWrite(agent.c,path,new Uint8Array([1,2,3]),'application/octet-stream',null,key());
+  const pending=await submitDelete(agent.c,path,initial.result_revision!,key());
+  await page.route('**/owner/approvals/'+pending.approval_id+'/content',route=>route.fulfill({status:200,body:Buffer.from([9,9,9])}));
+  await loginReact();await page.locator('#approval-list label').filter({hasText:path}).getByRole('checkbox').check();
+  await ui(page.locator('#review-list')).toContainText('File bytes do not match');
+  await ui(page.getByRole('button',{name:'Approve this request',exact:true})).toBeDisabled();
+  await page.getByRole('button',{name:'Deny this request',exact:true}).click();
+  await page.getByRole('alertdialog').getByRole('button',{name:'Cancel',exact:true}).click();
+  expect((await f.db.prepare('SELECT status FROM actions WHERE id=?').bind(pending.id).first<any>()).status).toBe('pending');
+  await page.getByRole('button',{name:'Deny this request',exact:true}).click();await page.getByRole('alertdialog').getByRole('button',{name:'Confirm decision'}).click();
+  await ui(page.locator('#decision-result')).toContainText('denied');
+  expect((await f.db.prepare('SELECT deleted_at FROM files WHERE path=?').bind(path).first<any>()).deleted_at).toBeNull();
+  expect(await page.evaluate(()=>(window as any).cspViolations)).toEqual([]);
+  await page.unroute('**/owner/approvals/'+pending.approval_id+'/content');await signOutReact();
+ });
+ it('reports individual batch outcomes when another owner decides one reviewed member', async () => {
+  const agent=await setupAgent(f),base='/mine/batch-'+key();
+  const a=await submitWrite(agent.c,base+'-a',new Uint8Array([1]),'application/octet-stream',null,key());
+  const b=await submitWrite(agent.c,base+'-b',new Uint8Array([2]),'application/octet-stream',null,key());
+  const first=await submitDelete(agent.c,base+'-a',a.result_revision!,key());
+  const second=await submitDelete(agent.c,base+'-b',b.result_revision!,key());
+  await loginReact();
+  for(const suffix of ['-a','-b'])await page.locator('#approval-list label').filter({hasText:base+suffix}).getByRole('checkbox').check();
+  await ui(page.getByRole('button',{name:'Approve 2 selected',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'Approve 2 selected',exact:true}).click();
+  const stored=await f.db.prepare('SELECT digest FROM actions WHERE id=?').bind(first.id).first<any>();
+  const competing=await f.runtime.dispatchFetch(origin+'/api/v1/owner/approvals/'+first.approval_id+'/decision',{method:'POST',headers:{authorization:'Bearer '+f.env.OWNER_TOKEN,'content-type':'application/json','idempotency-key':key()},body:JSON.stringify({digest:stored.digest,decision:'deny',reason:'Decided in another tab'})});
+  expect(competing.status).toBe(200);
+  await page.getByRole('alertdialog').getByRole('button',{name:'Confirm decision'}).click();
+  await ui(page.locator('#decision-result')).toContainText('decision_conflict');await ui(page.locator('#decision-result')).toContainText('ready');
+  expect((await f.db.prepare('SELECT status FROM actions WHERE id=?').bind(first.id).first<any>()).status).toBe('denied');
+  await ui.poll(async()=> (await f.db.prepare('SELECT status FROM actions WHERE id=?').bind(second.id).first<any>()).status).toBe('succeeded');
+  expect((await f.db.prepare('SELECT deleted_at FROM files WHERE path=?').bind(base+'-a').first<any>()).deleted_at).toBeNull();
+  await signOutReact();
+ });
+ it('clears a review during sign-out and ignores its late response', async () => {
+  const agent=await setupAgent(f),pending=await submitProxy(agent.c,{secret:agent.secret.name,url:'https://api.example.com/private',method:'POST',body_text:'PRIVATE_REVIEW_SENTINEL'},key());
+  let release!:()=>void;const held=new Promise<void>(resolve=>{release=resolve;});
+  let received!:()=>void;const reached=new Promise<void>(resolve=>{received=resolve;});
+  await page.route('**/owner/approvals/'+pending.approval_id,async route=>{const response=await route.fetch();received();await held;await route.fulfill({response});});
+  await loginReact();await page.locator('#approval-list label').filter({hasText:pending.target!}).getByRole('checkbox').check();await reached;
+  await signOutReact();release();await page.unrouteAll({behavior:'wait'});
+  await ui(page.locator('#review-list')).toHaveCount(0);expect(await page.locator('body').innerText()).not.toContain('PRIVATE_REVIEW_SENTINEL');
+  await loginReact();await ui(page.locator('#approval-list input:checked')).toHaveCount(0);await signOutReact();
+ });
+ it('polls at five seconds, backs off when idle, pauses when hidden, and shows stale data after failed refreshes',async()=>{
+  await page.addInitScript(()=>{
+   const original=window.fetch;(window as any).pollTimes=[];
+   window.fetch=(...args)=>{if(String(args[0]).includes('/owner/overview?'))(window as any).pollTimes.push(Date.now());return original(...args);};
+  });
+  await page.clock.install();await page.clock.pauseAt(new Date(Date.now()+100));await login();await ui(page.locator('#refresh-time')).toContainText('Last refreshed');
+  let calls=0,fail=false;
+  await page.route('**/owner/overview?**',async route=>{calls++;if(fail)await route.fulfill({status:503,json:{error:{message:'Service unavailable'},request_id:'test-refresh'}});else await route.continue();});
+  const advance=async(ms:number)=>{await page.clock.runFor(ms);await new Promise(r=>setTimeout(r,70));};
+  await advance(4999);expect(calls).toBe(0);await advance(1);await ui.poll(()=>calls).toBe(1);
+  for(let i=0;i<20;i++)await advance(5000);
+  const times:number[]=await page.evaluate(()=>(window as any).pollTimes);
+  const intervals=times.slice(1).map((time,i)=>time-times[i]);
+  expect(intervals).toContain(5000);expect(intervals).toContain(15000);
+  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
+  const hidden=calls;await advance(30000);expect(calls).toBe(hidden);
+  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
+  await ui.poll(()=>calls).toBe(hidden+1);fail=true;
+  await new Promise(r=>setTimeout(r,70));await advance(15000);await advance(15000);await advance(1000);await ui(page.locator('#stale')).toBeVisible();
+  await signOutReact();await page.unroute('**/owner/overview?**');
  });
 
 });

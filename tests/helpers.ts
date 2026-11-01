@@ -18,6 +18,7 @@ export async function database(migrate = true, worker = false, outbound?: (reque
   modules: true,
   ...(origin.startsWith('http:')?{host:'127.0.0.1',port:Number(new URL(origin).port)}:{}),
   script, bindings,
+  ...(worker ? {assets: {directory: "dist-web", binding: "ASSETS", routerConfig: {has_user_worker: true, invoke_user_worker_ahead_of_assets: true}}} : {}),
   compatibilityDate: '2025-10-14',
   d1Databases: ['DB'],
   r2Buckets: ['FILES'],

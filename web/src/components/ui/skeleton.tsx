@@ -1,0 +1,1 @@
+export function Skeleton() { return <div role="status" aria-label="Loading" className="space-y-3"><div className="skeleton h-7 w-2/5" /><div className="skeleton h-24" /><div className="skeleton h-24" /><span className="sr-only">Loading…</span></div>; }

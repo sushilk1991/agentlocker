@@ -1,5 +1,5 @@
 export interface Env {
- DB: D1Database; FILES: R2Bucket;
+ DB: D1Database; FILES: R2Bucket; ASSETS?: Fetcher;
  OWNER_TOKEN: string; LOCKER_ENCRYPTION_KEY: string; PREVIOUS_ENCRYPTION_KEY?: string;
  ENCRYPTION_KEY_VERSION: string; PREVIOUS_KEY_VERSION?: string; PUBLIC_ORIGIN: string; DEPLOYMENT_ID: string;
 }

@@ -1,5 +1,16 @@
 # Owner web app
 
+The new React workspace opens at `/` or `/approvals`. It includes sign-in,
+first-run setup, a responsive sidebar, theme selection, and complete single and
+batch approval review. Other sidebar pages link to the existing management app
+at `/legacy`. Sign in there again; credentials are never passed between pages.
+All original management screens remain available during this staged redesign.
+
+The theme follows your system by default. Its light or dark preference is saved
+in browser storage. Tokens, review data, and secret values are not saved there.
+Signing out aborts requests and clears the private query cache and review data.
+
+
 Open your deployment URL. Sign in with the owner token set as a Worker secret. The page keeps it in memory. Reloading or signing out clears it. The app does not use cookies or browser storage for credentials. Never use this token in an agent config.
 
 Before first use, confirm the configured URL, approval expiry, file quota, and history retention. Save the owner token in a password manager. Keep an offline backup of the encryption key and its version. Setup needs the preconfigured token. It cannot be claimed by an anonymous visitor. A lost token must be replaced through Cloudflare or Wrangler.

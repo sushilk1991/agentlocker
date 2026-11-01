@@ -50,7 +50,7 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
  try {
   const url = new URL(request.url);
   if (url.pathname === '/healthz' && request.method === 'GET') return new Response('ok');
-  const asset = staticAsset(request,env);
+  const asset = await staticAsset(request,env);
   if (asset) return asset;
   validateConfig(env);
   if(url.pathname==='/mcp') {

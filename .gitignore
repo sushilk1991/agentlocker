@@ -13,3 +13,5 @@ coverage/
 *.backup
 node_modules/
 .wrangler/
+
+dist-web/

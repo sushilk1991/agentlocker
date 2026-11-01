@@ -134,6 +134,9 @@ export async function deploy({ config, saved = {}, save, run, log = console.log 
 
 async function main() {
   ensure(!process.env.CLOUDFLARE_ENV, 'Use a separate deployment copy instead of CLOUDFLARE_ENV.');
+  // Build before any remote step. Imported fake-Wrangler tests stay local.
+  const { build } = await import('vite');
+  await build({ configFile: resolve('vite.config.ts') });
   const { experimental_readRawConfig } = require('wrangler');
   const { rawConfig } = experimental_readRawConfig({ config: 'wrangler.jsonc' });
   const dir = resolve('.agentlocker'), filename = resolve(dir, 'wrangler.json');
@@ -141,6 +144,7 @@ async function main() {
   try { saved = JSON.parse(await readFile(filename, 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw new Error('Cannot read .agentlocker/wrangler.json. Keep this record and investigate.'); }
   rawConfig.main = resolve(rawConfig.main);
+  if (rawConfig.assets?.directory) rawConfig.assets.directory = resolve(rawConfig.assets.directory);
   for (const db of rawConfig.d1_databases ?? []) db.migrations_dir = resolve(db.migrations_dir || 'migrations');
   await mkdir(dir, { recursive: true, mode: 0o700 });
   await deploy({ config: rawConfig, saved,
