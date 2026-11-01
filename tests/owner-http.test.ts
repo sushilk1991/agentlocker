@@ -15,7 +15,7 @@ describe('owner routes in the bundled Worker', () => {
   const page = await f.runtime.dispatchFetch('https://locker.example.com/');
   expect(page.status).toBe(200); expect(await page.text()).toContain('Agent Locker');
   expect(page.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
-  for(const path of ['/','/approvals','/agents','/files','/secrets','/policy','/audit','/settings','/legacy','/app.js','/style.css']) {
+  for(const path of ['/','/approvals','/agents','/files','/secrets','/policy','/audit','/settings']) {
    const asset=await f.runtime.dispatchFetch('https://locker.example.com'+path);const content=await asset.text();
    expect(content).not.toContain(f.env.OWNER_TOKEN);expect(content).not.toContain(f.env.LOCKER_ENCRYPTION_KEY);
    expect(asset.headers.get('cache-control')).toBe('no-store');expect(asset.headers.get('x-content-type-options')).toBe('nosniff');
@@ -45,7 +45,7 @@ describe('owner routes in the bundled Worker', () => {
   expect((await f.runtime.dispatchFetch('https://other.example.com/approvals')).status).toBe(403);
   expect((await f.runtime.dispatchFetch('https://locker.example.com/approvals',{method:'POST'})).status).toBe(405);
   expect((await f.runtime.dispatchFetch('https://locker.example.com/approvals',{method:'HEAD'})).status).toBe(200);
-  for(const path of ['/api/v1/owner/session', '/api/v1/missing', '/mcp', '/missing']) {
+  for(const path of ['/api/v1/owner/session', '/api/v1/missing', '/mcp', '/missing', '/legacy', '/app.js', '/style.css']) {
    const response = await f.runtime.dispatchFetch('https://locker.example.com'+path,{headers:{accept:'text/html'}});
    expect(response.status).toBeGreaterThanOrEqual(400); expect(response.headers.get('content-type')).not.toContain('text/html');
   }

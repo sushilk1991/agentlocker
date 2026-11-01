@@ -43,3 +43,36 @@ describe('owner browser client security', () => {
   expect(visibleText('\u001b\u202e\u2066\u0000')).toBe('\\u001b\\u202e\\u2066\\u0000');
  });
 });
+
+describe('owner file and key mutation retries', () => {
+ it('retains exact binary bytes, revision headers, and the retry key after an uncertain upload', async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(Response.json({id:'action',status:'unknown',request_id:'uncertain-send'}))
+   .mockResolvedValue(Response.json({id:'action',status:'succeeded',result_revision:'new-revision'}));
+  vi.stubGlobal('fetch', fetcher);
+  const api = new OwnerApi('disposable-test-token', () => {}), bytes = new Uint8Array([0,255,128,1]);
+  await expect(api.upload('/work/binary',bytes,'application/octet-stream','reviewed-revision','a'.repeat(64))).rejects.toThrow('unknown');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await api.upload('/work/binary',bytes,'application/octet-stream','reviewed-revision','a'.repeat(64));
+  const first = fetcher.mock.calls[0][1], second = fetcher.mock.calls[1][1];
+  expect(first.body).toEqual(bytes); expect(second.body).toEqual(bytes); expect(first.headers['if-match']).toBe('"reviewed-revision"');
+  expect(first.headers['x-confirm-content-sha256']).toBe('a'.repeat(64)); expect(first.headers['idempotency-key']).toBe(second.headers['idempotency-key']); api.dispose();
+ });
+ it('keeps only hashed retry signatures for failed key saves', async () => {
+  const fetcher = vi.fn().mockImplementation(async () => Response.json({error:{message:'Unavailable'}}, {status:503})); vi.stubGlobal('fetch', fetcher);
+  const api = new OwnerApi('disposable-test-token', () => {}), value = 'disposable-provider-canary';
+  const input = {name:'provider',value,hosts:['api.example.com'],injection_header:'authorization',scheme:'bearer' as const,enabled:true};
+  await expect(api.saveKey(input)).rejects.toThrow('Unavailable');
+  // This in-memory retry map must not retain the provider value as a map key.
+  const signatures = [...(api as unknown as {mutationKeys: Map<string,string>}).mutationKeys.keys()];
+  expect(signatures).toHaveLength(1); expect(signatures[0]).toMatch(/^[a-f0-9]{64}$/); expect(signatures[0]).not.toContain(value);
+  await expect(api.saveKey(input)).rejects.toThrow('Unavailable'); expect(fetcher.mock.calls[0][1].headers['idempotency-key']).toBe(fetcher.mock.calls[1][1].headers['idempotency-key']); api.dispose();
+ });
+ it('refuses a completed download if sign-out happened while its bytes were loading', async () => {
+  let release!: (blob: Blob) => void;
+  const blob = new Promise<Blob>(resolve => {release = resolve;});
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ok:true,blob:()=>blob}));
+  const api = new OwnerApi('disposable-test-token', () => {}), request = api.fileDownload('/work/private');
+  await new Promise(resolve => setTimeout(resolve, 0)); api.dispose(); release(new Blob(['disposable-private-file']));
+  await expect(request).rejects.toMatchObject({name:'AbortError'});
+ });
+});

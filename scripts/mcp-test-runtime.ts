@@ -58,7 +58,6 @@ export async function mcpRuntime(upstream:string) {
  try {
   await writeFile(config,JSON.stringify({name:'agentlocker-mcp-test',main:resolve('scripts/fixtures/mcp-worker.ts'),
    compatibility_date:'2025-10-14',compatibility_flags:['nodejs_compat'],
-   rules:[{type:'Text',globs:['**/public/*.html','**/public/*.css','**/public/*.js'],fallthrough:false}],
    d1_databases:[{binding:'DB',database_name:'agentlocker-test',database_id:'00000000-0000-0000-0000-000000000001',migrations_dir:resolve('migrations')}],
    r2_buckets:[{binding:'FILES',bucket_name:'agentlocker-test-files'}],
    vars:{PUBLIC_ORIGIN:origin,DEPLOYMENT_ID:'mcp-test-deployment',ENCRYPTION_KEY_VERSION:'1',TEST_UPSTREAM:upstream},observability:{enabled:false},

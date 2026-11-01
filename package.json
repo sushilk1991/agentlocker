@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit && tsc -p packages/sdk/tsconfig.json --noEmit && tsc -p web/tsconfig.json",
     "test": "vitest run",
     "test:mcp": "node --import tsx scripts/test-mcp.ts",
-    "test:browser": "vitest run tests/owner-browser.test.ts",
+    "test:browser": "vitest run tests/owner-browser.test.ts tests/owner-management-browser.test.ts",
     "test:smoke": "node --import tsx scripts/smoke.ts",
     "db:local": "wrangler d1 migrations apply DB --local",
     "db:remote": "wrangler d1 migrations apply DB --remote",

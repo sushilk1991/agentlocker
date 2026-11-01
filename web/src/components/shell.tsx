@@ -1,6 +1,6 @@
 import { Suspense, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { ClipboardCheck, Users, Folder, KeyRound, SlidersHorizontal, ScrollText, Settings, Menu, LogOut, RefreshCw, ArrowUpRight } from 'lucide-react';
+import { ClipboardCheck, Users, Folder, KeyRound, SlidersHorizontal, ScrollText, Settings, Menu, LogOut, RefreshCw } from 'lucide-react';
 import { Brand } from '../app';
 import { useSession } from '../lib/session';
 import { useOverview } from '../lib/polling';
@@ -28,7 +28,7 @@ export default function Shell() {
     {overview.error && <p role="status" className="warning">{visibleText(overview.error.message)}</p>}
     {overview.data?.warnings.map(warning => <p className="warning" key={warning}>{visibleText(warning)}</p>)}
     <Suspense fallback={<Skeleton />}><Outlet context={{overview: overview.data, visible: overview.visible}} /></Suspense>
-    <footer>Approvals stay in this locker. <a href="/legacy">Open existing management app <ArrowUpRight size={12} /></a></footer>
+    <footer>Approvals stay in this locker. Each deployment belongs to its owner.</footer>
    </main>
   </div>
  </div></Sheet>;

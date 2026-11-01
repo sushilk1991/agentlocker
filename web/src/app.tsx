@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster, toast } from 'sonner';
 import { OwnerApi, type Session } from './lib/api';
@@ -12,14 +12,18 @@ import { ShieldCheck } from 'lucide-react';
 const Shell = lazy(() => import('./components/shell'));
 const Approvals = lazy(() => import('./routes/approvals'));
 const Agents = lazy(() => import('./routes/agents'));
-const Existing = lazy(() => import('./routes/existing'));
+const Files = lazy(() => import('./routes/files'));
+const Keys = lazy(() => import('./routes/keys'));
+const Audit = lazy(() => import('./routes/audit'));
+const Settings = lazy(() => import('./routes/settings'));
+const Policy = lazy(() => import('./routes/policy'));
 
 function Workspace() {
  const [queryClient] = useState(() => new QueryClient({defaultOptions: {queries: {retry: false, refetchOnWindowFocus: false}, mutations: {retry: false}}}));
  const [session, setSession] = useState<{api: OwnerApi; data: Session} | null>(null);
  const apiRef = useRef<OwnerApi | null>(null), generation = useRef(0);
  const [busy, setBusy] = useState(false), [notice, setNotice] = useState('');
- const location = useLocation(), navigate = useNavigate();
+ const navigate = useNavigate();
  const signOut = () => {
   generation.current++; apiRef.current?.dispose(); apiRef.current = null;
   void queryClient.cancelQueries(); queryClient.clear(); toast.dismiss();
@@ -51,7 +55,8 @@ function Workspace() {
     <Suspense fallback={<main className="page"><Skeleton /></main>}><Routes><Route element={<Shell />}>
      <Route index element={<Navigate to="/approvals" replace />} /><Route path="approvals" element={<Approvals />} />
      <Route path="agents" element={<Agents />} />
-     {['files', 'secrets', 'policy', 'audit', 'settings'].map(path => <Route key={path} path={path} element={<Existing key={location.pathname} />} />)}
+     <Route path="files" element={<Files />} /><Route path="secrets" element={<Keys />} />
+     <Route path="audit" element={<Audit />} /><Route path="settings" element={<Settings />} /><Route path="policy" element={<Policy />} />
      <Route path="*" element={<Navigate to="/approvals" replace />} />
     </Route></Routes></Suspense>}
   </SessionContext.Provider>}

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { Users, Plus, Copy, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Agent } from '../lib/api';
@@ -79,7 +80,7 @@ function ManageAgent({agent, onClose}: {agent: Agent; onClose: () => void}) {
  }
  return <Dialog open onOpenChange={open => {if (!open && !busy) onClose();}}><DialogContent className="agent-dialog" busy={busy}>
   <DialogTitle>{visibleText(agent.name)}</DialogTitle><DialogDescription>Agent ID: {agent.id}. Manage its task tokens and exact grants.</DialogDescription>
-  <div className="actions"><Badge variant={agent.status === 'enabled' ? 'default' : 'secondary'}>{agent.status}</Badge><Button asChild variant="outline"><a href={'/legacy?' + new URLSearchParams({agent_id: agent.id}) + '#audit'}>View agent activity</a></Button>
+  <div className="actions"><Badge variant={agent.status === 'enabled' ? 'default' : 'secondary'}>{agent.status}</Badge><Button asChild variant="outline"><Link to={'/audit?' + new URLSearchParams({agent_id: agent.id})}>View agent activity</Link></Button>
    {!revoked && <><Button variant="outline" disabled={busy || agent.status !== 'enabled'} onClick={() => setConfirm({description: 'Disable this agent and invalidate its unexecuted requests? You can enable it after reviewing access. Dispatched sends cannot be recalled.', run: () => changeStatus('disabled')})}>Disable agent</Button><Button variant="destructive" disabled={busy} onClick={() => setConfirm({description: `Permanently revoke ${visibleText(agent.name)} and all its tokens? Unexecuted requests will be invalidated. Dispatched sends cannot be recalled.`, run: () => changeStatus('revoked')})}>Revoke agent</Button></>}
   </div>
   {error && <p role="alert" className="warning">{error}</p>}

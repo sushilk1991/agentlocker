@@ -12,9 +12,8 @@ There is no shared service or inbox. The code and docs use the [MIT license](LIC
 This is a work in progress. The file API, approvals, encrypted secrets proxy,
 owner web app, remote MCP server, SDK, and CLI have local tests. The app includes
 file history and restore, secret management, policy, settings, and approval review.
-The redesigned workspace includes approvals, agents, task tokens, and grants.
-Other management screens remain in the existing app at `/legacy` during the
-migration.
+The React workspace includes approvals, agents, task tokens, grants, files, keys,
+audit, policy, and settings.
 Deployment scripts and a local smoke check are included. A fresh-account
 Cloudflare deployment check is still needed.
 See [PROGRESS.md](PROGRESS.md).

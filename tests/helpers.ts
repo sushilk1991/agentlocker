@@ -12,7 +12,7 @@ export async function applyMigration(db: D1Database, name: string) {
 export async function database(migrate = true, worker = false, outbound?: (request: RuntimeRequest) => Promise<RuntimeResponse>, origin = 'https://locker.example.com') {
  const bindings = {OWNER_TOKEN: 'owner-canary-' + 'a'.repeat(64), LOCKER_ENCRYPTION_KEY: btoa('k'.repeat(32)),
   ENCRYPTION_KEY_VERSION: '1', PUBLIC_ORIGIN: origin, DEPLOYMENT_ID: 'test-deployment-id'};
- const script = worker ? (await build({entryPoints: ['src/index.ts'], bundle: true, write: false, format: 'esm', platform: 'browser', plugins:[{name:'owner-assets',setup(build){build.onLoad({filter:/[\\/]public[\\/].*\.(html|css|js)$/},async args=>({contents:await readFile(args.path,'utf8'),loader:'text'}));}}]})).outputFiles[0].text
+ const script = worker ? (await build({entryPoints: ['src/index.ts'], bundle: true, write: false, format: 'esm', platform: 'browser'})).outputFiles[0].text
   : 'export default { fetch() { return new Response("test"); } };';
  const runtime = new Miniflare({
   modules: true,

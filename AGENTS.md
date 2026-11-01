@@ -14,7 +14,7 @@ publish packages, or deploy unless the owner explicitly asks.
 Use TypeScript. One Worker serves the web app, HTTP API, and stateless Streamable
 HTTP MCP. D1 (`DB`) holds metadata and audit events. Private R2 (`FILES`) holds
 file bytes. Keep v1 free of KV and Durable Objects unless a concrete need changes
-the requirements. The owner app uses small HTML, CSS, and JavaScript files.
+the requirements. The owner app uses React and TypeScript in `web/`. Vite builds its static assets.
 
 Keep permission checks, approval, execution, and audit writing in the shared
 services. Transports must not make their own policy decisions or access R2

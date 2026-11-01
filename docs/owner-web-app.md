@@ -1,11 +1,8 @@
 # Owner web app
 
-The new React workspace opens at `/` or `/approvals`. It includes sign-in,
-first-run setup, a responsive sidebar, theme selection, complete single and
-batch approval review, and agent, token, and grant management at `/agents`.
-Other sidebar pages link to the existing management app
-at `/legacy`. Sign in there again; credentials are never passed between pages.
-All original management screens remain available during this staged redesign.
+The React workspace opens at `/` or any sidebar route. It includes sign-in,
+first-run setup, approvals, agents, grants, files, keys, audit, policy, and settings.
+Each route loads when opened. The old management app has been removed.
 
 The theme follows your system by default. Its light or dark preference is saved
 in browser storage. Tokens, review data, and secret values are not saved there.
@@ -14,7 +11,7 @@ The Agents screen shows task tokens once in its management dialog. Closing the
 dialog clears the new token. Save grant edits before enabling an agent. Grant
 saves confirm the reviewed version and warn that waiting requests will be
 invalidated. A version conflict keeps the form blocked until you reload grants.
-View agent activity opens its filtered audit log in `/legacy`. Sign in again.
+View agent activity opens its filtered audit log in this workspace.
 If a screen cannot load, the app clears that session and offers a reload. Sign
 in again and check the queue before repeating a request.
 
@@ -33,9 +30,9 @@ Upload a new file at an exact path, up to 10 MiB. Creation rejects any existing 
 
 Downloads preserve the original bytes. Uploaded HTML is downloaded as an attachment. Delete file asks for confirmation of the exact revision and hash. It leaves a tombstone. Revisions and restore shows retained content, authors, and actual restore deadlines. Download a revision to inspect it. Restore revision confirms both the source and the current path revision, including a tombstone. Restore creates a new owner revision. It keeps the audit history. Expired content cannot be restored. File history is not a backup.
 
-Secrets lets you create a key, replace its value or policy, and disable it. Choose either a Bearer token in Authorization or a plain key in one supported custom header. Enter exact public hosts, one per line. Subdomains need their own entries. Wildcards, URLs, paths, and ports are rejected.
+Keys lets you create a key, replace its value or policy, and disable it. Choose either a Bearer token in Authorization or a plain key in one supported custom header. Enter exact public hosts, one per line. Subdomains need their own entries. Wildcards, URLs, paths, and ports are rejected.
 
-The value field is cleared on submission, including a failed request. Saved values never return to the form. Leave Replacement value empty to keep the current key while changing policy. The editor keeps the displayed version. Reload the Secrets view and choose Edit secret again after a version conflict. The cards show policy and value versions, enabled state, exact hosts, granted agents, and grant expiry. Use history opens the audit filter for that secret. Edit grants in Agents & grants. Saving or disabling a secret invalidates waiting requests.
+The value field is cleared on submission, including a failed request. Saved values never return to the form. Leave Replacement value empty to keep the current key while changing policy. The editor keeps the displayed version. Use Reload secret after a version conflict. Saving stays blocked until reload. The cards show policy and value versions, enabled state, exact hosts, granted agents, and grant expiry. Use history opens the audit filter for that secret. Edit grants in Agents. Saving or disabling a secret invalidates waiting requests.
 
 Policy shows the mandatory deletion, replacement, and all-method send gates. Add extra rules for file reads, new writes, file listings, or secret metadata listings. Scope file rules to a folder or all folders. Scope secret-list rules to one named secret or all granted secrets. Remove extra rules to stop requiring that extra review. Rules cannot grant access or remove mandatory gates.
 
@@ -43,7 +40,7 @@ Settings lets you change the default approval expiry, file quota in bytes, and f
 
 Policy and Settings share one configuration version. Each save uses the version shown when the form loaded. A conflict leaves the edit in place. Use Reload policy or Reload settings to discard the edit and load the current version. Saving either invalidates pending and ready actions. It cannot recall dispatched sends. A failed submission keeps its idempotency key for a retry with the same input in this tab.
 
-Maintenance mode in Settings stops protected calls and scheduled work. Settings stays available so you can turn it off. Settings also points to [operations](operations.md) and [deployment](deploy.md) instructions for backups and keys. Owner tokens and storage encryption keys stay in Worker secrets. They have no browser editing form. Storage re-encryption and a verified backup/recovery drill remain release work. Sign out of this locker clears the same private state as the header's Sign out button.
+Maintenance mode in Settings stops protected calls and scheduled work. Settings stays available so you can turn it off. Settings also points to [operations](operations.md) and [deployment](deploy.md) instructions for backups and keys. Owner tokens and storage encryption keys stay in Worker secrets. They have no browser editing form. Storage re-encryption and a verified backup/recovery drill remain release work. Sign out of this locker clears the same private state as the sidebar’s Sign out button.
 
 Approvals wait in the app. There are no push alerts. They expire if nobody reviews them. A native iOS app with push is future work.
 
