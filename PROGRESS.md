@@ -154,3 +154,7 @@
 - 01 Nov 19:30 IST: ship started; running local QA.
 - 01 Nov ~19:45 IST: local QA passed: npm ci (9 dependency advisories: 1 moderate, 6 high, 2 critical), typecheck clean, npm test 323/323 across 20/20 files, test:mcp 4/4 groups, build dry-run OK.
 - Deploy BLOCKED: the Cloudflare connector (sushilk.1991@gmail.com, account 75f97e9b…) can read but not create resources. Creating the R2 bucket returned 403 needing `workers-r2.write`; creating D1 failed on a permission the connection cannot request. Nothing was created on Cloudflare. No secrets generated, no smoke run, no GitHub repo created or pushed.
+- 01 Nov ~20:25 IST: npm audit fix (no --force) changed nothing. The 9 advisories (vitest/@vitest/mocker, tinypool, sharp, undici) are dev/test tooling only (Wrangler, Miniflare, Vitest) and need major bumps via --force; left pinned. Not in the Worker bundle.
+- Deployed with captain's API token via `npm run deploy`: created D1 `agentlocker` and private R2 `agentlocker-files`, set OWNER_TOKEN and LOCKER_ENCRYPTION_KEY via stdin, applied remote migrations, deployed. Live: https://agentlocker.sushilk-1991.workers.dev (HTTPS 200 HTML). R2 r2.dev access disabled, no custom domains.
+- Live smoke passed 16/16 checks plus cleanup (schema 4, app 0.1.0).
+- Checked tracked files and full history for .dev.vars, .agentlocker, .wrangler, dist and live credential values: none. Created empty public repo sushilk1991/agentlocker; push BLOCKED: gh token lacks `workflow` scope (rejects .github/workflows/ci.yml).
