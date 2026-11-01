@@ -95,5 +95,5 @@ npm run test:mcp
 ```
 
 Update the relevant guide and `PROGRESS.md` with observed results. State any
-remaining route, compatibility, or deployment gap. Do not deploy or publish as
+remaining screen, compatibility, or deployment gap. Do not deploy or publish as
 part of a local check.

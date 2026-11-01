@@ -5,7 +5,7 @@ let f: Awaited<ReturnType<typeof database>>;
 const key = () => crypto.randomUUID();
 const request = (route: string, method = 'GET', body?: unknown, headers: Record<string,string> = {}) =>
  f.runtime.dispatchFetch('https://locker.example.com/api/v1/owner/' + route, {method,
-  headers: {authorization: 'Bearer ' + f.env.OWNER_TOKEN, ...(body === undefined ? {} : {'content-type':'application/json','idempotency-key':key()}), ...headers},
+  headers: {authorization: 'Bearer ' + f.env.OWNER_TOKEN, ...(method==='GET'?{}:{'idempotency-key':key()}), ...(body === undefined ? {} : {'content-type':'application/json'}), ...headers},
   body: body === undefined ? undefined : JSON.stringify(body)});
 
 describe('owner routes in the bundled Worker', () => {

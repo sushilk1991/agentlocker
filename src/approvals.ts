@@ -1,12 +1,13 @@
-import { actionAccess, actionActor, actionInput, actionSummary, authoritySQL, verifyAction } from './action-records';
-import { requireFolder, requireOwner, requireSecret } from './auth';
+import { actionAccess, actionActor, actionInput, actionScopeSQL, actionSummary, authoritySQL, verifyAction } from './action-records';
+import { active, requireFolder, requireOwner, requireSecret } from './auth';
 import { audit, auditStatement } from './audit';
+import { readAudit } from './audit-query';
 import { DAY, executeFileAction } from './file-actions';
 import { changedOne, storageError } from './file-transaction';
 import { current, download, fileBytes, fileMetadata, listFiles, pageLimit } from './files';
 import { executeProxy, finishAttempt } from './proxy';
 import { listSecrets } from './secrets';
-import { canonical, open, seal, unbase64 } from './security';
+import { base64, bytes, canonical, open, seal, unbase64 } from './security';
 import { all, assert, Context, json, LIMITS, LockerError, NOW, one, opaqueId, Row, statement } from './types';
 
 async function transition(c: Context,a: Row,status: 'expired'|'invalidated',code: string) {
@@ -39,6 +40,54 @@ export async function getAction(c: Context,id: string) {
  const approval=a.approval_id?await one(c,'SELECT state,decided_at FROM approvals WHERE id=?',a.approval_id):null;
  const attempt=await one(c,'SELECT claimed_at,dispatch_started_at,completed_at,state,upstream_status FROM execution_attempts WHERE action_id=?',id);
  return {...actionSummary(a),approval,attempt};
+}
+export async function waitForAction(c: Context,action: Row,seconds=0,signal?: AbortSignal) {
+ assert(Number.isInteger(seconds)&&seconds>=0&&seconds<=20,'invalid_wait');
+ const end=Date.now()+seconds*1000;
+ while(['pending','ready','executing'].includes(action.status)&&Date.now()<end&&!signal?.aborted) {
+  await new Promise<void>(resolve=>{
+   const done=()=>{clearTimeout(timer);signal?.removeEventListener('abort',done);resolve();};
+   const timer=setTimeout(done,Math.min(500,end-Date.now()));
+   signal?.addEventListener('abort',done,{once:true});
+  });
+  if(!signal?.aborted)action=await getAction(c,action.id);
+ }
+ return action;
+}
+export async function listActions(c: Context,limit=50,cursor?: string) {
+ assert(c.actor.kind==='agent','forbidden',403);await active(c);pageLimit(limit);
+ const version=(await one(c,'SELECT config_version FROM settings WHERE id=1'))!.config_version,identity=`agent:${c.actor.agentId}`;
+ let created=Number.MAX_SAFE_INTEGER,after='';
+ if(cursor!==undefined) {
+  try {
+   assert(cursor.length>0&&cursor.length<=8192,'invalid_cursor');
+   const e=JSON.parse(new TextDecoder().decode(unbase64(cursor)));
+   const v=JSON.parse(await open(c.env,'actions.cursor',identity,1,e.cipher,e.nonce,e.keyVersion));
+   assert(v.version===version&&Number.isSafeInteger(v.created)&&v.created>=0&&typeof v.after==='string'&&v.after.length<=100,'invalid_cursor');
+   created=v.created;after=v.after;
+  }catch{assert(false,'invalid_cursor');}
+ }
+ const rows=await all(c,`SELECT a.id,a.approval_id,a.status,a.expires_at,a.result_revision,a.result_metadata,a.error_code,a.result_expires_at,a.operation,a.target,a.created_at
+  FROM actions a WHERE a.agent_id=? AND ${actionScopeSQL}
+  AND (a.created_at<? OR (a.created_at=? AND a.id<?)) ORDER BY a.created_at DESC,a.id DESC LIMIT ?`,c.actor.agentId,created,created,after,limit+1);
+ const page=rows.slice(0,limit),last=page.at(-1);
+ const next=rows.length>limit?base64(bytes(JSON.stringify(await seal(c.env,'actions.cursor',identity,1,
+  canonical({version,created:last!.created_at,after:last!.id}))))):null;
+ const actions=[];
+ for(const row of page) {
+  const a=['pending','ready'].includes(row.status)?await refreshAction(c,row.id):row;
+  actions.push({...actionSummary(a),operation:a.operation,target:a.target,created_at:a.created_at});
+ }
+ await active(c);await audit(c,'actions.list','/','allow','listed');
+ return {actions,cursor:next};
+}
+export async function ownerAction(c: Context,id: string,params: URLSearchParams) {
+ requireOwner(c);
+ const summary=await getAction(c,id),a=(await one(c,'SELECT * FROM actions WHERE id=?',id))!;
+ const filters=new URLSearchParams(params);filters.set('action_id',id);
+ const events=await readAudit(c,filters);
+ return {...summary,operation:a.operation,target:a.target,digest:a.digest,agent_id:a.agent_id,token_id:a.token_id,
+  created_at:a.created_at,updated_at:a.updated_at,original_request_id:a.request_id,timeline:events.events,next_cursor:events.next_cursor};
 }
 export async function listApprovals(c: Context,state='pending',limit=50,after=0) {
  requireOwner(c); pageLimit(limit); assert(['pending','approved','denied','expired','invalidated','all'].includes(state),'invalid_state');
@@ -183,9 +232,9 @@ export async function actionResult(c: Context,id: string,fileLimit=LIMITS.file) 
    if(a.operation==='files.list')for(const file of result.files)await requireFolder(c,file.path,'read');
    if(a.operation==='secrets.list')for(const secret of result.secrets)await requireSecret(c,secret.name);
   }
-  response=json(result);
+  response=json({...result,request_id:c.requestId});
  }
- else response=json(JSON.parse(a.result_metadata));
+ else response=json({...JSON.parse(a.result_metadata),request_id:c.requestId});
  await actionAccess(c,a); await audit(c,'action.result.read',a.target,'allow','read',{actionId:id}); return response;
 }
 export async function sweepActions(c: Context,fetcher: typeof fetch=fetch) {

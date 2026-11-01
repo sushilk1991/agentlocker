@@ -11,8 +11,9 @@ There is no shared service or inbox. The code and docs use the [MIT license](LIC
 
 This is a work in progress. The file API, approvals, encrypted secrets proxy,
 owner activity and review app, remote MCP server, SDK, and CLI have local tests.
-Some HTTP routes and management screens are unfinished. Deployment automation
-and a fresh-account deployment check are still needed. See [PROGRESS.md](PROGRESS.md).
+File and secret management screens and policy/settings forms are unfinished.
+Deployment automation and a fresh-account deployment check are still needed.
+See [PROGRESS.md](PROGRESS.md).
 
 ## Deploy your own
 
@@ -67,7 +68,7 @@ an agent your owner token, encryption key, or Cloudflare credentials.
 | Interface | Start here |
 | --- | --- |
 | Remote MCP | Streamable HTTP at `/mcp`, with an agent bearer header on every request. [Tools and connection example](docs/mcp.md). |
-| HTTP | Bearer-authenticated routes under `/api/v1`. [Examples and current route gaps](docs/http-api.md). |
+| HTTP | Bearer-authenticated routes under `/api/v1`. [Routes and examples](docs/http-api.md). |
 | CLI | Build from source, then run `node packages/cli/dist/index.js`. [Commands and exit codes](packages/cli/README.md). |
 | TypeScript | Fetch client with no runtime dependencies. [SDK examples](packages/sdk/README.md). |
 

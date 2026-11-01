@@ -176,8 +176,12 @@ try {
  const result=await call(client,'locker_action_result',{action_id:send.id});
  assert.equal(result.result.upstream_status,201);assert.equal(Buffer.from(result.result.body_base64,'base64').toString(),'echo [REDACTED]');
  assert(!result.result.headers['set-cookie']);
- const httpResult=await (await http(`actions/${send.id}/result`,first.t.token)).json() as any;
- assert.deepEqual(result.result,httpResult);
+ const httpResponse=await http(`actions/${send.id}/result`,first.t.token);
+ const {request_id:httpRequestId,...httpResult}=await httpResponse.json() as any;
+ const {request_id:mcpRequestId,...mcpResult}=result.result;
+ assert.equal(httpRequestId,httpResponse.headers.get('x-request-id'));
+ assert.equal(mcpRequestId,result.request_id);
+ assert.deepEqual(mcpResult,httpResult);
  await rejected(other,'locker_action_result',{action_id:send.id},'not_found_or_not_allowed');
  const replay=await call(client,'locker_proxy_request',sendArgs);assert.equal(replay.id,send.id);assert.equal(replay.status,'succeeded');assert.equal(captured.length,1);
  const denied=await call(client,'locker_proxy_request',{...sendArgs,url:'https://api.example.com/denied',idempotency_key:key()});

@@ -2,7 +2,7 @@ export * from './types.js';
 export { AgentLockerError, HttpClient, retryAfter } from './transport.js';
 export type { ClientOptions } from './transport.js';
 import { AgentLockerError, deadline, HttpClient, retryAfter, type ClientOptions } from './transport.js';
-import { isTerminal, type Action, type CallOptions, type Envelope, type FileList, type FileMetadata,
+import { isTerminal, type Action, type ActionSummary, type CallOptions, type Envelope, type FileList, type FileMetadata,
  type Identity, type MutationOptions, type Page, type ProxyRequest, type SecretList, type WaitOptions, type WriteOptions } from './types.js';
 
 export const newIdempotencyKey = () => crypto.randomUUID();
@@ -68,7 +68,7 @@ export class AgentLocker {
   request: (input: ProxyRequest, options: MutationOptions) => this.http.json<Action>('/api/v1/proxy/requests', jsonBody(input), options),
  };
  actions = {
-  list: (page: Page = {}, options: CallOptions = {}) => this.http.json<Envelope & { actions: Action[]; cursor: string | null }>(query('actions', page), undefined, options),
+  list: (page: Page = {}, options: CallOptions = {}) => this.http.json<Envelope & { actions: ActionSummary[]; cursor: string | null }>(query('actions', page), undefined, options),
   get: (id: string, options: CallOptions = {}) => this.http.json<Action>(query('actions/' + encodeURIComponent(id), {}), undefined, options),
   result: async (id: string, options: CallOptions = {}) => new Download(await this.http.request(query('actions/' + encodeURIComponent(id) + '/result', {}), undefined, options)),
   wait: async (id: string, options: WaitOptions = {}): Promise<Action> => {

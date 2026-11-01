@@ -27,6 +27,16 @@ export async function actionAccess(c: Context,a: Row) {
   assert(await one(c,`SELECT 1 FROM folder_grants WHERE agent_id=? AND read=1 AND (expires_at IS NULL OR expires_at>${NOW}) AND (substr(?,1,length(prefix))=prefix OR substr(prefix,1,length(?))=?)`,c.actor.agentId,a.target,a.target,a.target),'not_found_or_not_allowed',404);
  } else await requireFolder(c,a.target,a.operation==='file.delete'?'delete':a.operation==='file.read'?'read':'write');
 }
+// Keep list visibility equivalent to actionAccess, before LIMIT or cursor creation.
+export const actionScopeSQL = `(
+ (a.operation='proxy.request' AND EXISTS(SELECT 1 FROM secret_grants g JOIN secrets s ON s.id=g.secret_id
+  WHERE g.agent_id=a.agent_id AND s.id=a.secret_id AND s.enabled=1 AND (g.expires_at IS NULL OR g.expires_at>${NOW}))) OR
+ (a.operation='secrets.list' AND EXISTS(SELECT 1 FROM secret_grants g WHERE g.agent_id=a.agent_id AND (g.expires_at IS NULL OR g.expires_at>${NOW}))) OR
+ (a.operation='files.list' AND EXISTS(SELECT 1 FROM folder_grants g WHERE g.agent_id=a.agent_id AND g.read=1
+  AND (g.expires_at IS NULL OR g.expires_at>${NOW}) AND (substr(a.target,1,length(g.prefix))=g.prefix OR substr(g.prefix,1,length(a.target))=a.target))) OR
+ (a.operation LIKE 'file.%' AND EXISTS(SELECT 1 FROM folder_grants g WHERE g.agent_id=a.agent_id
+  AND (g.expires_at IS NULL OR g.expires_at>${NOW}) AND substr(a.target,1,length(g.prefix))=g.prefix
+  AND CASE WHEN a.operation='file.delete' THEN g."delete" WHEN a.operation='file.read' THEN g.read ELSE g.write END=1)))`;
 export async function actionInput(c: Context,a: Row) {
  assert(a.input_cipher&&a.input_nonce&&a.key_version,'action_input_expired',410);
  const input=JSON.parse(await open(c.env,'action.input',a.id,1,a.input_cipher,a.input_nonce,a.key_version));

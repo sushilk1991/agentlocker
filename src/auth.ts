@@ -1,5 +1,6 @@
 import { all, assert, Context, Identity, NOW, one, Row, settings, statement } from './types';
 import { equalToken, matches, path, sha } from './security';
+import { audit } from './audit';
 export { audit, auditStatement } from './audit';
 export async function authenticate(c: Context,request: Request,owner: boolean): Promise<Identity> {
  assert(new URL(request.url).origin===c.env.PUBLIC_ORIGIN,'invalid_origin',403);
@@ -20,6 +21,12 @@ export async function grants(c: Context) {
  await active(c);
  return {folders:await all(c,`SELECT prefix,read,write,"delete",expires_at FROM folder_grants WHERE agent_id=? AND (expires_at IS NULL OR expires_at>${NOW})`,c.actor.agentId),
  secrets:await all(c,`SELECT s.id,s.name,g.read,g.expires_at FROM secret_grants g JOIN secrets s ON s.id=g.secret_id WHERE g.agent_id=? AND s.enabled=1 AND (g.expires_at IS NULL OR g.expires_at>${NOW})`,c.actor.agentId)};
+}
+export async function identity(c: Context) {
+ assert(c.actor.kind==='agent','forbidden',403);
+ const effective=await grants(c);
+ await audit(c,'identity.read','/','allow','read');
+ return {agent:{id:c.actor.agentId,name:c.actor.name},token:{id:c.actor.tokenId,expires_at:c.actor.expiresAt},grants:effective};
 }
 export async function folderAllowed(c: Context,target: string,permission: 'read'|'write'|'delete') {
  path(target,target.endsWith('/'));

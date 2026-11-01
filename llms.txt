@@ -23,7 +23,7 @@ the Worker does not currently serve documentation routes.
 
 ## Agent interfaces
 
-- [HTTP API](docs/http-api.md): Bearer auth, file example, action states, route gaps.
+- [HTTP API](docs/http-api.md): Bearer auth, routes, pagination, policy, settings, action states.
 - [Files](docs/file-api.md): Binary transfers, revision conditions, history, quotas.
 - [MCP](docs/mcp.md): Connection example, nine tools, inline limits, real client test.
 - [MCP tool schemas](docs/mcp-tools.json): Generated tool descriptions, schemas, annotations.

@@ -34,11 +34,9 @@ label, in `~/.config/agentlocker/config.json`. Set `AGENTLOCKER_CONFIG` or use
 except for send), `AGENTLOCKER_URL`, then config. Credentials come only from the
 environment. They are never copied to config or debug logs.
 
-Current Worker boundary: `configure` and `whoami` need the remaining `/whoami`
-route. `actions list` also awaits its Worker route. The commands are implemented
-and contract-tested; the current Worker returns `not_found`. Secret listing works
-without pagination; its HTTP pagination support belongs to that later chunk.
-Set `AGENTLOCKER_URL` to use the implemented file and approval flows now.
+`configure`, `whoami`, `actions list`, and paginated secret listing use the Worker
+HTTP routes. Their flows are tested against the bundled Worker with local D1/R2.
+List pages default to 50 entries and allow up to 100. Follow the returned cursor.
 
 Uploads stream over HTTP and are create-only by default. A replacement needs
 `--revision <id>` and owner approval. Uploads allow 10 MiB. Downloads publish the

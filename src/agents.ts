@@ -45,13 +45,13 @@ export async function issueToken(c: Context, agentId: string, label: string, lif
 }
 
 // Invalidating work is part of the same batch as changing its authority.
-function invalidateStatements(c: Context, condition: string, args: string[], reason: string) {
+export function invalidateStatements(c: Context, condition: string, args: string[], reason: string) {
  return [
+  statement(c, `INSERT INTO audit_events(request_id,action_id,approval_id,actor_kind,actor_name,operation,target,decision,result,reason_code)
+   SELECT ?,id,approval_id,'system','System','approval.invalidated',target,'deny','invalidated',?
+   FROM actions WHERE status IN('pending','ready') AND ${condition}`, c.requestId, reason, ...args),
   statement(c, `UPDATE actions SET status='invalidated',error_code=?,updated_at=${NOW},result_expires_at=${NOW}+86400000
    WHERE status IN('pending','ready') AND ${condition}`, reason, ...args),
-  statement(c, `INSERT INTO audit_events(request_id,action_id,approval_id,actor_kind,actor_name,operation,target,decision,result,reason_code)
-   SELECT ?,a.id,p.id,'system','System','approval.invalidated',a.target,'deny','invalidated',?
-   FROM actions a JOIN approvals p ON p.action_id=a.id WHERE a.status='invalidated' AND p.state='pending'`, c.requestId, reason),
   statement(c, `UPDATE approvals SET state='invalidated',decided_at=${NOW},decision_request_id=?
    WHERE state='pending' AND action_id IN(SELECT id FROM actions WHERE status='invalidated')`, c.requestId),
  ];

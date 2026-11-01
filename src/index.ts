@@ -1,19 +1,20 @@
 import { staticAsset } from './web';
 import { handleMcp } from './mcp';
 import { ownerSession, setupOwner, listAgents, agentGrants, overview } from './owner';
+import { patchSettings, readPolicy, readSettings, replacePolicy } from './owner-config';
 import { readAudit, exportAudit } from './audit-query';
 import { createAgent, issueToken, replaceGrants, revokeToken, setAgentStatus } from './agents';
-import { authenticate, rate, ready, requireOwner } from './auth';
+import { authenticate, checkSchema, identity, rate, ready, requireOwner } from './auth';
 import { audit } from './audit';
 import { submitWrite, submitDelete, submitRestore, idempotencyKey } from './file-actions';
-import { actionResult, approvalContent, batchDecision, decideApproval, executeAction, getAction, listApprovals, reviewApproval, sweepActions } from './approvals';
+import { actionResult, approvalContent, batchDecision, decideApproval, executeAction, getAction, listActions, listApprovals, ownerAction, reviewApproval, sweepActions, waitForAction } from './approvals';
 import { submitProxy } from './proxy';
 import { disableSecret, gateSecretList, listSecrets, saveSecret } from './secrets';
 import { cleanupFiles } from './file-cleanup';
 import { gateFileRead } from './file-read-actions';
 import { download, fileMetadata, listFiles, pageLimit, readFile, retainedContent, revisions, visibleFile } from './files';
 import { bounded, path, sha, validateConfig } from './security';
-import { assert, Context, Env, json, LIMITS, LockerError, opaqueId, TERMINAL, one } from './types';
+import { assert, Context, Env, json, LIMITS, LockerError, opaqueId, TERMINAL, one, settings } from './types';
 
 function precondition(request: Request, create: boolean) {
  const match = request.headers.get('if-match'), none = request.headers.get('if-none-match');
@@ -71,34 +72,52 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
    else throw new LockerError('method_not_allowed',405);
    return secureResponse(response,c);
   }
-  await ready(c);
+  // Settings remain available to the owner so maintenance can be turned off.
+  if(owner && route==='/settings') {
+   await checkSchema(c);assert((await settings(c)).setup_complete,'setup_required',503);
+  } else await ready(c);
   if (c.actor.kind === 'agent') {
    await rate(c, `token:${c.actor.tokenId}`, 'file', 120);
    await rate(c, `agent:${c.actor.agentId}`, 'file', 240);
    if (request.method !== 'GET') await rate(c, `agent:${c.actor.agentId}`, 'mutation', 20);
   }
-  if(owner && route==='/overview' && request.method==='GET') {
+  if(!owner && route==='/whoami' && request.method==='GET') {
+   query(url,[]);operation='identity.read';response=json({request_id:c.requestId,...await identity(c)});
+  } else if(!owner && route==='/actions' && request.method==='GET') {
+   query(url,['cursor','limit']);operation='actions.list';
+   response=json({request_id:c.requestId,...await listActions(c,Number(url.searchParams.get('limit')??50),url.searchParams.get('cursor')??undefined)});
+  } else if(owner && route==='/policy' && request.method==='GET') {
+   query(url,[]);operation='policy.read';response=json({request_id:c.requestId,...await readPolicy(c)});
+  } else if(owner && route==='/policy' && request.method==='PUT') {
+   query(url,[]);operation='policy.update';const input=await bodyJson(request,['expected_version','rules']);
+   response=json({request_id:c.requestId,...await replacePolicy(c,input.expected_version,input.rules,request.headers.get('idempotency-key')!)});
+  } else if(owner && route==='/settings' && request.method==='GET') {
+   query(url,[]);operation='settings.read';response=json({request_id:c.requestId,...await readSettings(c)});
+  } else if(owner && route==='/settings' && request.method==='PATCH') {
+   query(url,[]);operation='settings.update';const {expected_version,...input}=await bodyJson(request,['expected_version','approval_ttl','quota_bytes','retention_ms','maintenance']);
+   response=json({request_id:c.requestId,...await patchSettings(c,expected_version,input,request.headers.get('idempotency-key')!)});
+  } else if(owner && route==='/overview' && request.method==='GET') {
    query(url,['cursor','pending_version']);operation='owner.overview';
    response=json({request_id:c.requestId,...await overview(c,Number(url.searchParams.get('cursor')??0))});
   } else if(owner && route==='/agents' && request.method==='GET') {
    query(url,[]);operation='agents.list';response=json({request_id:c.requestId,...await listAgents(c)});
   } else if(owner && route==='/agents' && request.method==='POST') {
-   query(url,[]);operation='agent.create';const input=await bodyJson(request,['name','description']);
+   query(url,[]);operation='agent.create';idempotencyKey(request.headers.get('idempotency-key')!);const input=await bodyJson(request,['name','description']);
    response=json({request_id:c.requestId,...await createAgent(c,input.name,input.description)},201);
   } else if(owner && /^\/agents\/[^/]+$/.test(route) && request.method==='PATCH') {
-   query(url,[]);operation='agent.status';const input=await bodyJson(request,['name','description','status']);
+   query(url,[]);operation='agent.status';idempotencyKey(request.headers.get('idempotency-key')!);const input=await bodyJson(request,['name','description','status']);
    assert(Object.keys(input).length,'invalid_input');const id=route.split('/')[2];
    const a=await one(c,'SELECT status FROM agents WHERE id=?',id);assert(a,'not_found',404);
    await setAgentStatus(c,id,input.status??a.status,input);response=json({request_id:c.requestId,updated:true});
   } else if(owner && /^\/agents\/[^/]+\/tokens$/.test(route) && request.method==='POST') {
-   query(url,[]);operation='token.create';const input=await bodyJson(request,['label','lifetime_ms']);
+   query(url,[]);operation='token.create';idempotencyKey(request.headers.get('idempotency-key')!);const input=await bodyJson(request,['label','lifetime_ms']);
    response=json({request_id:c.requestId,...await issueToken(c,route.split('/')[2],input.label,input.lifetime_ms)},201);
   } else if(owner && /^\/agents\/[^/]+\/tokens\/[^/]+$/.test(route) && request.method==='DELETE') {
-   query(url,[]);operation='token.revoke';await revokeToken(c,route.split('/')[2],route.split('/')[4]);response=json({request_id:c.requestId,revoked:true});
+   query(url,[]);operation='token.revoke';idempotencyKey(request.headers.get('idempotency-key')!);await revokeToken(c,route.split('/')[2],route.split('/')[4]);response=json({request_id:c.requestId,revoked:true});
   } else if(owner && /^\/agents\/[^/]+\/grants$/.test(route) && request.method==='GET') {
    query(url,[]);operation='grants.read';response=json({request_id:c.requestId,...await agentGrants(c,route.split('/')[2])});
   } else if(owner && /^\/agents\/[^/]+\/grants$/.test(route) && request.method==='PUT') {
-   query(url,[]);operation='grants.replace';const input=await bodyJson(request,['expected_version','folders','secrets']);
+   query(url,[]);operation='grants.replace';idempotencyKey(request.headers.get('idempotency-key')!);const input=await bodyJson(request,['expected_version','folders','secrets']);
    response=json({request_id:c.requestId,...await replaceGrants(c,route.split('/')[2],input.expected_version,input.folders,input.secrets)});
   } else if(owner && route==='/audit' && request.method==='GET') {
    operation='audit.list';response=json({request_id:c.requestId,...await readAudit(c,url.searchParams)});
@@ -108,9 +127,10 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
    query(url,[]); operation='proxy.request';
    response=actionResponse(c,await submitProxy(c,await bodyJson(request),request.headers.get('idempotency-key')!));
   } else if(route==='/secrets' && request.method==='GET') {
-   query(url,[]); operation='secrets.list';
-   const gated=await gateSecretList(c,request.headers.get('idempotency-key'));
-   response=gated?actionResponse(c,gated):json({request_id:c.requestId,...await listSecrets(c)});
+   query(url,['cursor','limit']); operation='secrets.list';
+   const limit=Number(url.searchParams.get('limit')??50),cursor=url.searchParams.get('cursor')??undefined;pageLimit(limit);
+   const gated=await gateSecretList(c,request.headers.get('idempotency-key'),{limit,cursor});
+   response=gated?actionResponse(c,gated):json({request_id:c.requestId,...await listSecrets(c,limit,cursor)});
   } else if(owner && route==='/secrets' && request.method==='POST') {
    query(url,[]); operation='secret.save'; idempotencyKey(request.headers.get('idempotency-key')!);
    response=json({request_id:c.requestId,...await saveSecret(c,await bodyJson(request) as any)},201);
@@ -189,8 +209,11 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
   } else if (/^\/actions\/[^/]+\/result$/.test(route) && request.method==='GET') {
    query(url,[]); operation='action.result.read'; response=await actionResult(c,route.split('/')[2]);
   } else if (/^\/actions\/[^/]+$/.test(route) && request.method === 'GET') {
-   query(url, []); operation = 'action.get';
-   response = json({request_id: c.requestId, ...await getAction(c, route.split('/')[2])});
+   query(url, owner?['cursor','limit']:['wait_seconds']); operation = 'action.get';
+   const id=route.split('/')[2];
+   const result=owner?await ownerAction(c,id,url.searchParams):await waitForAction(c,await getAction(c,id),Number(url.searchParams.get('wait_seconds')??0),request.signal);
+   response = json({request_id: c.requestId, ...result});
+   if(!TERMINAL.has(result.status))response.headers.set('retry-after','2');
   } else throw new LockerError('not_found', 404);
  } catch (error) {
   let failure = error instanceof LockerError ? error : String(error).includes('UNIQUE constraint failed: agents.name') ? new LockerError('agent_name_exists',409) : new LockerError('storage_unavailable', 503);

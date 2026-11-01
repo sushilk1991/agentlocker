@@ -34,9 +34,9 @@ features that are not finished yet.
 
 The owner app has setup, agents, grants, approvals, activity, and audit views.
 File/secret management screens and policy/settings forms remain unfinished.
-The HTTP `/api/v1/whoami` and agent action-list routes are missing. HTTP secret
-listing does not yet accept pagination parameters. The SDK and CLI describe
-these gaps too. MCP has its own tested identity and listing tools.
+The HTTP endpoint inventory is implemented, including identity, paginated agent
+lists, owner investigation, and policy/settings updates. SDK and CLI identity and
+list flows are tested against it. MCP uses the same shared identity service.
 
 The source packages are not published. Manual connection checks for named
 coding and personal agents remain open. The deployment, local-setup, and deployed

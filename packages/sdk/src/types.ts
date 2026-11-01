@@ -27,6 +27,10 @@ interface ActionFields extends Envelope {
 }
 /** Each state is a separate member, so checking status narrows the union. */
 export type Action = { [S in ActionStatus]: ActionFields & { status: S } }[ActionStatus];
+/** List entries share the page's request ID and include the operation and target. */
+export type ActionSummary = { [S in ActionStatus]: Omit<ActionFields, 'request_id'> & {
+ status: S; operation: string; target: string; created_at: number;
+} }[ActionStatus];
 export type FileList = Envelope & { files: FileMetadata[]; cursor: string | null };
 export type SecretList = Envelope & { secrets: SecretMetadata[]; cursor: string | null };
 export interface Page { cursor?: string; limit?: number }

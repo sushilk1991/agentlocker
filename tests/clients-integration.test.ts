@@ -61,6 +61,13 @@ describe('published client flows against the bundled Worker over HTTP',()=>{
   sdk=new AgentLocker({base_url:origin,token:agent.t.token});owner=new HttpClient({base_url:origin,token:f.env.OWNER_TOKEN});
  },45000);
  afterAll(async()=>{await f?.runtime.dispose();if(dir)await rm(dir,{recursive:true,force:true});});
+ it('checks real identity through SDK, CLI whoami, and configure without saving credentials',async()=>{
+  const identity=await sdk.identity();expect(identity).toMatchObject({agent:{id:agent.a.id},token:{id:agent.t.id},grants:{folders:[{prefix:'/mine/'}]}});
+  const whoami=await cli(['whoami']);expect(whoami.code).toBe(0);expect(whoami.value.agent.id).toBe(agent.a.id);
+  const configured=await cli(['configure','--label','coding-task']);expect(configured.code).toBe(0);expect(configured.value.identity.agent.id).toBe(agent.a.id);
+  const saved=await readFile(join(dir,'no-config'),'utf8');expect(JSON.parse(saved)).toEqual({url:origin,label:'coding-task'});
+  for(const value of [agent.t.token,f.env.OWNER_TOKEN,CANARY])expect(saved.includes(value)).toBe(false);
+ });
  it('streams a 10 MiB file through HTTP, preserves bytes, and deduplicates with the same key',async()=>{
   const bytes=Uint8Array.from({length:10*1024*1024},(_,i)=>i%256),idempotency_key=key();
   const first=await sdk.files.write('/mine/large',new Blob([bytes]).stream(),{create_only:true,media_type:'application/octet-stream',idempotency_key});
@@ -74,6 +81,23 @@ describe('published client flows against the bundled Worker over HTTP',()=>{
   expect((await cli(['files','get','/mine/cli','--output',output])).code).toBe(0);expect(await readFile(output)).toEqual(bytes);
   const denied=await cli(['files','get','/mine/cli','--output',join(dir,'other')],other.t.token);expect(denied.code).toBe(1);expect(denied.value.error.code).toBe('not_found_or_not_allowed');
   await expect(new AgentLocker({base_url:origin,token:other.t.token}).files.metadata('/mine/cli')).rejects.toMatchObject({status:404});
+ });
+ it('lists actions and pages granted secrets through the real SDK and built CLI',async()=>{
+  const actions=await sdk.actions.list({limit:1});expect(actions.actions).toHaveLength(1);expect(actions.cursor).toEqual(expect.any(String));
+  const next=await sdk.actions.list({limit:1,cursor:actions.cursor!});expect(next.actions).toHaveLength(1);expect(next.actions[0].id).not.toBe(actions.actions[0].id);
+  const listed=await cli(['actions','list','--limit','1']);expect(listed.code).toBe(0);expect(listed.value.actions[0].id).toBe(actions.actions[0].id);
+  await expect(new AgentLocker({base_url:origin,token:other.t.token}).actions.get(actions.actions[0].id)).rejects.toMatchObject({status:404});
+  const secret=await owner.json<any>('/api/v1/owner/secrets',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
+   name:'z-client-pagination',value:CANARY,hosts:['api.example.com'],injection_header:'Authorization',scheme:'bearer',
+  })},{idempotency_key:key()});
+  const current=await owner.json<any>('/api/v1/owner/agents/'+agent.a.id+'/grants');
+  await owner.json('/api/v1/owner/agents/'+agent.a.id+'/grants',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({
+   expected_version:current.version,folders:[{prefix:'/mine/',read:true,write:true,delete:true}],secrets:[{secret_id:agent.secret!.id,read:true},{secret_id:secret.id,read:true}],
+  })},{idempotency_key:key()});
+  const first=await sdk.secrets.list({limit:1});if('status' in first)throw Error('expected metadata');expect(first.cursor).toEqual(expect.any(String));
+  const second=await sdk.secrets.list({limit:1,cursor:first.cursor!});if('status' in second)throw Error('expected metadata');
+  expect(new Set([first.secrets[0].id,second.secrets[0].id])).toEqual(new Set([secret.id,agent.secret!.id]));expect(second.cursor).toBeNull();
+  const page=await cli(['secrets','list','--limit','1','--cursor',first.cursor!]);expect(page.code).toBe(0);expect(page.value.secrets[0].id).toBe(second.secrets[0].id);
  });
  it('requires exact approval for replacement and delete; full CLI review drives one decision',async()=>{
   const created=await sdk.files.write('/mine/review',Uint8Array.of(1),{create_only:true,media_type:'application/octet-stream',idempotency_key:key()});

@@ -1,15 +1,15 @@
 import { z } from 'zod';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
-import { grants, rate } from './auth';
+import { identity, rate } from './auth';
 import { audit } from './audit';
-import { actionResult, getAction } from './approvals';
+import { actionResult, getAction, waitForAction as waitFor } from './approvals';
 import { submitDelete, submitWrite } from './file-actions';
 import { gateFileRead } from './file-read-actions';
 import { listFiles, readFile } from './files';
 import { submitProxy } from './proxy';
 import { gateSecretList, listSecrets } from './secrets';
 import { base64, bytes, path, sha, unbase64 } from './security';
-import { assert, Context, LIMITS, LockerError, opaqueId, Row, TERMINAL } from './types';
+import { assert, Context, LIMITS, LockerError, opaqueId, Row } from './types';
 
 const exactPath = z.string().min(1).max(1024);
 const id = z.string().min(1).max(100);
@@ -28,18 +28,6 @@ function decode(input: {text?: string; base64?: string}, required: boolean, endp
  if (data.length > LIMITS.inline) inlineError(endpoint);
  return data;
 }
-async function waitFor(c: Context, action: Row, seconds = 0, signal?: AbortSignal) {
- const end = Date.now() + seconds*1000;
- while (!TERMINAL.has(action.status) && Date.now() < end && !signal?.aborted) {
-  await new Promise<void>(resolve => {
-   const done = () => { clearTimeout(timer); signal?.removeEventListener('abort', done); resolve(); };
-   const timer = setTimeout(done, Math.min(500, end-Date.now()));
-   signal?.addEventListener('abort', done, {once:true});
-  });
-  if (!signal?.aborted) action = await getAction(c, action.id);
- }
- return action;
-}
 const fileContent = async (data: Uint8Array, r: Row) => ({encoding:'base64', content:base64(data), length:data.length,
  hash:r.hash ?? await sha(data), revision:r.id, media_type:r.media_type});
 
@@ -54,9 +42,7 @@ const annotations = (readOnlyHint = true, destructiveHint = false, openWorldHint
 export const mcpTools: Tool[] = [
  {name:'locker_identity', description:'Show the authenticated agent, token expiry, and its current effective grants. This does not change permissions.',
   schema:z.object({}).strict(), annotations:annotations(), async run(c) {
-   const effective = await grants(c);
-   await audit(c, 'identity.read', '/', 'allow', 'read');
-   return {agent:{id:c.actor.agentId, name:c.actor.name}, token:{id:c.actor.tokenId, expires_at:c.actor.expiresAt}, grants:effective};
+   return identity(c);
   }},
  {name:'locker_files_list', description:'List current files you can read under this folder. Results exclude files outside your grants. Follow the cursor for another page. An owner rule may require approval.',
   schema:z.object({prefix:exactPath, ...paging, ...readKey}).strict(), annotations:annotations(), async run(c, a) {

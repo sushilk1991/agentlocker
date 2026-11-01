@@ -107,10 +107,8 @@ server's origin policy; v1 has no wildcard CORS. Owner tokens must never ship in
 browser code. Saved provider keys are never returned. Use a named secret through
 `proxy.request`.
 
-Current Worker boundary: `/whoami` and agent action listing are still part of the
-remaining Worker routes chunk. Their client methods are covered by contract tests;
-they return `not_found` on the current Worker. `configure` also needs `/whoami`.
-Secret listing works, but the current HTTP route rejects pagination parameters.
-The client supports the specified parameters for that later route completion.
-File, action status/result, and proxy flows are tested over real local HTTP.
+Identity, action listing, and paginated secret listing use the Worker HTTP API.
+These flows, file transfers, action results, and proxy requests are tested over
+real local HTTP. List pages default to 50 entries and allow up to 100. Cursors
+belong to the caller and become invalid after configuration or grant changes.
 Native iOS push is future work. V1 reviews happen in the deployment's web app.
