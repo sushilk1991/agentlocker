@@ -91,6 +91,16 @@
 - Release blockers remain explicit: this checkout has no git remote or supplied public repository URL. Requested the URL and left `REPLACE_WITH_PUBLIC_REPOSITORY_URL` visibly marked in the README button rather than inventing a repository. `scripts/deploy.mjs`, `scripts/setup-local.mjs`, and `scripts/smoke.ts` are absent despite existing package commands. The button cannot yet be called a working one-click deployment. The next deployment chunk must supply the scripts, real URL, fresh-account check, deployed smoke evidence, and backup/restore drill. This chunk documents those gaps and provides a tested local setup instead of claiming deployment success.
 - Stopped at this chunk. No git push, package publication, or Cloudflare deployment was run.
 
+## Chunk 08 — Full QA complete (01 Nov 2026)
+- Read the research, current implementation boundary, and section 13 of the requirements for the requested QA checks. Kept this chunk to verification and this progress record. No application or test changes were needed.
+- `npm run typecheck` passed both the root and SDK TypeScript checks.
+- `npm test` passed **294/294 tests across 18/18 files**, with no skipped or failed tests. Exact counts: proxy 40, approvals 13, owner browser 5, client integration/runtime 8, file actions 10, files 23, MCP handler 17, grants 16, file HTTP 19, owner HTTP 5, approval HTTP 6, migrations 7, auth 18, audit 15, CLI 25, SDK 28, paths 26, audit-query units 13. Vitest reported 91.93 seconds. This includes Chromium, bundled Worker HTTP tests, and real local D1/R2 with production migrations.
+- `npm run test:mcp` passed **4/4 real-client groups** using official SDK 1.32.2 and protocol 2025-11-25. Groups cover negotiation/discovery and per-request authentication; scoped files/secrets, binary bytes and limits; pending deletes/sends, decisions and terminal states; HTTP parity, audit evidence, restart persistence and revocation. These four groups are separate from the 294 Vitest tests.
+- `npm run build` passed as a local Wrangler deployment dry-run. `git diff --check` passed. No deployment was performed.
+- No local workerd socket failure occurred, so no file or full-suite rerun was needed. `fileParallelism` remains false. Confirmed no Wrangler, workerd, Vitest, or Chromium processes remained after the checks, and no MCP temporary directories remained.
+- Existing gaps remain: unfinished Worker routes and management screens, one-click deployment tooling and repository URL, named-agent compatibility checks, deployed smoke evidence, and backup/recovery checks. Passing local QA does not complete those features or replace deployed checks. Native iOS push remains future work.
+- Stopped at this chunk. No git push, package publication, or deployment was run.
+
 ## In progress
 - Remaining Worker routes (including identity, agent action listing, and secret-list pagination), file/secret management screens, and policy/settings forms.
 - Remaining browser checks for later screens and manual named-agent compatibility checks.
