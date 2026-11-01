@@ -113,14 +113,24 @@
 - No local workerd socket failure occurred. `fileParallelism` remains false. Disposable runtimes, browsers, and MCP servers were stopped. Remaining work is the file/secret management screens, policy/settings forms, named-agent compatibility checks, one-click deployment tooling and repository URL, deployed smoke evidence, and backup/recovery checks. Native iOS push remains future work.
 - Stopped at this chunk. No git push, package publication, or deployment was run.
 
+## Chunk 10 — Owner management screens complete (01 Nov 2026)
+- Read the research, prior implementation boundary, required owner views, owner HTTP contracts, and backup/retention requirements relevant to this chunk. Kept implementation in the small HTML/CSS/JavaScript owner app. No framework, Worker service, route, schema, MCP tool, or migration changes were needed.
+- Added Files with folder-prefix browsing and pagination for current files and tombstones. Cards show exact revision metadata and authorship. Uploads use create-only or captured exact-revision conditions. Replacement confirmation includes the old revision/hash and new content size/hash. Downloads preserve bytes. Deletes require confirmation and matching revision headers. Retained history shows actual restore deadlines, revision downloads, and confirmed restore against the displayed current or tombstone revision.
+- Added Secrets with create, versioned value/policy replacement, disable, Bearer/custom-header injection, exact allowed hosts, granted-agent expiry/status, and a use-history audit link. Value fields clear on submission and sign-out. Saved values are never loaded or displayed. Grant and policy selectors follow all secret metadata pages, including disabled secrets.
+- Added Policy with versioned extra file-read/write/list and secret-list rules, folder or named-secret scope, removal controls, and fixed mandatory deletion/replacement/send gates. Added Settings with versioned expiry, byte quota, retention, maintenance, backup/key-rotation pointers, and logout. Worker credentials stay outside browser editing forms. Configuration saves explain pending/ready invalidation and provide explicit reload controls after conflicts.
+- All new calls use owner HTTP routes. File/config submissions retain an idempotency key for unchanged retries in the same tab. Sign-out aborts requests and clears new forms, metadata, selected revisions, versions, and retry keys. New content uses inert text and visible control/direction escapes. New controls use visible labels, focus styles, and the existing phone layout. Chromium checks caught ambiguous policy select labels; explicit label/control associations fixed them.
+- Extended the served-Worker Chromium suite from 5 to 9 tests. Added complete file create/replace/download/delete/tombstone/restore checks, binary and uploaded-HTML containment, exact mutation headers and restore inputs, cancelled deletion, stale revision refusal, secret creation/value containment/policy replacement/value replacement/grants/disable, scoped policy and settings saves, stale settings refusal, and clearing private state. New views were checked at 390-pixel width. Existing individual and batch approval decisions, complete 10 MiB review, digest mismatch blocking, audit export, and polling checks still pass.
+- Updated docs/owner-web-app.md with the views, version/retry behavior, owner routes, and browser coverage. Updated README, the documentation index, and llms.txt to remove stale missing-screen claims. Native iOS push remains future work. Deployment tooling, named-agent compatibility, storage re-encryption, and verified backup/recovery remain separate work.
+- Verification: `node --check public/app.js`, `npm run typecheck`, `npm run test:browser` (**9/9**), and `git diff --check` passed. Full `npm test` passed **312/312 tests across 19/19 files** in 96.15 seconds, including Chromium, bundled Worker HTTP checks, and real local D1/R2. No local workerd socket failure occurred. `fileParallelism` remains false. Browser and Miniflare cleanup runs in the suite's teardown.
+- Stopped at this chunk. No git push, package publication, or deployment was run.
+
 ## In progress
-- File/secret management screens and policy/settings forms. The Worker HTTP inventory is complete.
-- Remaining browser checks for later screens and manual named-agent compatibility checks.
+- Manual named-agent compatibility checks. The Worker HTTP inventory and required owner management screens are complete.
 - One-click provisioning/deployment tooling, the public repository URL for the README button, and verified migration/backup/recovery runbooks. The documentation and Wrangler template are in place; the button is not release-ready.
 
 ## Next
-- Continue with a bounded chunk for the remaining management screens or deployment work. Shared approval execution is connected to stored file actions, and the SDK/CLI use the implemented HTTP routes.
-- Run type checking and tests for each chunk. The real wrangler dev MCP client test now passes; keep it in later client and release checks. Remaining browser checks belong to their screen chunks.
+- Continue with a bounded deployment or compatibility chunk. Shared approval execution is connected to stored file actions, the owner app uses owner HTTP routes, and the SDK/CLI use the implemented agent routes.
+- Run type checking and tests for each chunk. Keep the real wrangler dev MCP client test in later client and release checks, along with the owner browser regressions.
 - Record exact counts and release checks that need a disposable Cloudflare account.
 - No git push or production deployment in this task.
 

@@ -193,10 +193,20 @@ nav button[aria-current] {
   border-radius:.4rem;
   padding:1.1rem;
   margin:1rem 0;
-  min-width:0
+  min-width:0;
+  overflow-wrap:anywhere
 }
 .card h3 {
   margin-top:0
+}
+fieldset.card {
+  width:100%
+}
+legend {
+  font-weight:650
+}
+input[type=file] {
+  overflow:hidden
 }
 .actions {
   display:flex;

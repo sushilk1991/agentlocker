@@ -15,17 +15,18 @@ const selected = new Map();
 function message(text) { $('notice').textContent = text; }
 function button(text, action, className) { const b = node('button',text,className); b.type = 'button'; b.addEventListener('click', () => run(action)); return b; }
 async function run(action) { try { await action(); } catch(e) { if(e.name !== 'AbortError') message(e.message || 'The request failed. Try again.'); } }
-async function api(path, {method='GET', body, key, raw=false} = {}) {
+async function api(path, {method='GET', body, key, raw=false, bytes, headers:extraHeaders={}} = {}) {
  const current = generation;
- const headers = {authorization:'Bearer ' + ownerToken};
+ const headers = {...extraHeaders,authorization:'Bearer ' + ownerToken};
  if(body !== undefined) headers['content-type']='application/json';
  if(method !== 'GET') headers['idempotency-key'] = key || crypto.randomUUID();
- const response = await fetch('/api/v1/owner/' + path, {method, headers, body:body === undefined ? undefined : JSON.stringify(body), cache:'no-store', redirect:'error', signal:requests.signal});
+ const response = await fetch('/api/v1/owner/' + path, {method, headers, body:bytes ?? (body === undefined ? undefined : JSON.stringify(body)), cache:'no-store', redirect:'error', signal:requests.signal});
  if(current !== generation) throw new DOMException('Signed out','AbortError');
  if(!response.ok) {
   const data = await response.json();
   if(response.status===401) logout();
-  throw new Error((data.error?.message || 'Request failed') + (data.request_id ? ' · Request ' + data.request_id : ''));
+  const hint={version_conflict:'This version has changed. Reload this view and review your edits before saving.',revision_conflict:'The file revision has changed. Browse the folder again and review the current revision.',invalid_cursor:'This list has changed. Reload it from the first page.'}[data.error?.code];
+  throw new Error((hint || data.error?.message || 'Request failed') + (data.request_id ? ' · Request ' + data.request_id : ''));
  }
  const data=raw ? response : await response.json();
  if(current !== generation)throw new DOMException('Signed out','AbortError');
@@ -40,6 +41,7 @@ function logout() {
  for(const id of ['storage','warnings','setup-origin','setup-defaults','refresh-time'])$(id).replaceChildren();
  $('pending-count').textContent='0 pending approvals';show('stale',false); $('decision-reason').value='';
  auditParams=new URLSearchParams({include_routine:'false'});auditCursor=undefined;approvalOffset=0;
+ resetManagement();
  show('signin',true); message(''); $('owner-token').focus();
 }
 $('logout').addEventListener('click',logout);
@@ -63,8 +65,9 @@ async function enterWorkspace() { show('workspace',true); await switchView('acti
 async function switchView(name) {
  view=name; for(const e of document.querySelectorAll('.view')) e.hidden=e.id!==name;
  for(const e of document.querySelectorAll('nav button')) { if(e.dataset.view===name)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current'); }
- $('view-title').textContent={activity:'Activity',agents:'Agents & grants',approvals:'Approvals',audit:'Audit log'}[name];
+ $('view-title').textContent={activity:'Activity',agents:'Agents & grants',files:'Files',secrets:'Secrets',approvals:'Approvals',audit:'Audit log',policy:'Policy',settings:'Settings'}[name];
  if(name==='agents')await loadAgents();if(name==='approvals')await loadApprovals();if(name==='audit')await loadAudit(false);
+ if(name==='files')await loadFiles();if(name==='secrets')await loadSecrets();if(name==='policy')await loadPolicy();if(name==='settings')await loadSettings();
 }
 for(const e of document.querySelectorAll('nav button'))e.addEventListener('click',()=>run(()=>switchView(e.dataset.view)));
 function eventTable(events) {
@@ -142,7 +145,7 @@ async function loadAgents() {
  }
 }
 async function editGrants(agent) {
- const [data,secretData]=await Promise.all([api(`agents/${agent.id}/grants`),api('secrets')]);
+ const [data,secretData]=await Promise.all([api(`agents/${agent.id}/grants`),allSecretMetadata()]);
  const editor=$('grant-editor');editor.replaceChildren();show('grant-editor',true);
  editor.append(node('h3','Grants for '+agent.name),node('p','Access is the union of all unexpired grants. A narrow grant does not override a broad one. Read, write, and delete are separate permissions. Delete and replacement still need approval.'));
  const effective=node('details'),summary=node('summary','Effective grants now');effective.append(summary,node('pre',JSON.stringify(data.effective,null,2)));editor.append(effective);
@@ -316,3 +319,223 @@ function downloadBlob(blob,name) { const url=URL.createObjectURL(blob),a=node('a
 for(const format of ['jsonl','csv'])$('export-'+format).addEventListener('click',()=>run(async()=>{
  const params=new URLSearchParams(auditParams);params.set('format',format);const response=await api('audit/export?'+params,{raw:true});const current=generation,blob=await response.blob();if(current===generation)downloadBlob(blob,'agent-locker-audit.'+format);
 }));
+
+// Detail views use captured revisions and versions. Refreshes never replace an
+// edit's precondition. A failed submission keeps its key for the same input.
+let uploadTarget, fileCursor, filePrefix='/', fileLoad=0, historyFile, historyCursor, historyLoad=0;
+let secretTarget, secretCursor, secretLoad=0, policyVersion, settingsVersion, policyLoad=0, settingsLoad=0;
+let policyControls=[];
+const mutationKeys=new Map();
+function ensureSession(current) { if(current!==generation||!ownerToken)throw new DOMException('Signed out','AbortError'); }
+async function reviewedMutation(path,options) {
+ const current=generation;
+ const signature=await hash(new TextEncoder().encode(canonical({path,...options,bytes:options.bytes?await hash(options.bytes):undefined})));
+ ensureSession(current);
+ if(!mutationKeys.has(signature))mutationKeys.set(signature,crypto.randomUUID());
+ const result=await api(path,{...options,key:mutationKeys.get(signature)});
+ if(result.status&&result.status!=='succeeded')throw new Error(`Action ${result.id}: ${result.status}. Check its audit history before retrying. · Request ${result.request_id}`);
+ mutationKeys.delete(signature);return result;
+}
+function onSubmit(id,action) {
+ const form=$(id);form.addEventListener('submit',event=>{event.preventDefault();run(async()=>{
+  const submit=form.querySelector('button:not([type=button])');if(submit.disabled)return;
+  const current=generation;submit.disabled=true;
+  try {await action();} finally {if(current===generation)submit.disabled=false;}
+ });});
+}
+async function ownerDownload(path,name) {
+ const current=generation,response=await api(path,{raw:true}),blob=await response.blob();ensureSession(current);downloadBlob(blob,name);
+}
+function fileAuthor(file) {return file.author_kind==='owner'?'Owner':`Agent ${file.agent_id} · token ${file.token_id}`;}
+function newUpload() {
+ uploadTarget=undefined;$('file-upload').reset();$('upload-path').readOnly=false;
+ $('upload-title').textContent='Upload a new file';$('file-precondition').textContent='Create only. An existing path will be rejected.';show('upload-new',false);
+}
+$('upload-new').addEventListener('click',newUpload);
+$('file-filter').addEventListener('submit',event=>{event.preventDefault();run(()=>loadFiles());});
+$('file-next').addEventListener('click',()=>run(()=>loadFiles(true)));
+async function loadFiles(more=false) {
+ const load=++fileLoad,prefix=more?filePrefix:$('file-prefix').value;
+ const params=new URLSearchParams({prefix,limit:'50'});if(more&&fileCursor)params.set('cursor',fileCursor);
+ const data=await api('files?'+params);if(load!==fileLoad)return;
+ filePrefix=prefix;fileCursor=data.cursor;
+ if(!more)$('file-list').replaceChildren();show('file-next',!!fileCursor);
+ if(!data.files.length&&!more)$('file-list').append(node('p','No files in this folder.'));
+ for(const file of data.files) {
+  const card=node('article',undefined,'card');card.append(node('h3',file.path),node('p',file.deleted_at?'Deleted · '+stamp(file.deleted_at):'Current · modified '+stamp(file.modified_at)),
+   node('p',`Revision: ${file.revision}\n${file.length??0} bytes · ${file.media_type??'content expired'}\nSHA-256: ${file.hash??'content expired'}\nAuthor: ${fileAuthor(file)}`));
+  const actions=node('div',undefined,'actions');
+  if(!file.deleted_at)actions.append(button('Download file',()=>ownerDownload('files/content?'+new URLSearchParams({path:file.path}),file.path.split('/').pop())),
+   button('Replace file',()=>{uploadTarget=file;$('upload-path').value=file.path;$('upload-path').readOnly=true;$('upload-bytes').value='';
+    $('upload-title').textContent='Replace a file';$('file-precondition').textContent=`Replace only revision ${file.revision}. Current SHA-256: ${file.hash}. The new bytes will be hashed before confirmation.`;show('upload-new',true);$('upload-bytes').focus();}),
+   button('Delete file',()=>deleteFile(file),'danger'));
+  actions.append(button('Revisions and restore',()=>loadRevisions(file)));card.append(actions);$('file-list').append(card);
+ }
+}
+onSubmit('file-upload',async()=>{
+ const current=generation,file=$('upload-bytes').files[0],target=uploadTarget,path=$('upload-path').value;
+ if(!file)throw new Error('Choose a file.');if(file.size>10*1024*1024)throw new Error('The file limit is 10 MiB.');
+ const bytes=new Uint8Array(await file.arrayBuffer()),digest=await hash(bytes);ensureSession(current);
+ const headers={'content-type':file.type||'application/octet-stream'};
+ if(target) {
+  if(!confirm(`Replace ${visibleText(path)} at exactly revision ${target.revision}?\nCurrent SHA-256: ${target.hash}\nNew file: ${bytes.length} bytes\nNew SHA-256: ${digest}`))return;
+  headers['if-match']='"'+target.revision+'"';headers['x-confirm-content-sha256']=digest;
+ } else headers['if-none-match']='*';
+ const result=await reviewedMutation('files/content?'+new URLSearchParams({path}),{method:'PUT',bytes,headers});
+ newUpload();await loadFiles();show('file-history',false);historyFile=undefined;historyLoad++;
+ message('File saved at revision '+result.result_revision+'.');await refreshOverview();
+});
+async function deleteFile(file) {
+ if(!confirm(`Delete ${visibleText(file.path)} at exactly revision ${file.revision}?\nSHA-256: ${file.hash}\nRetained content can be restored until its deadline.`))return;
+ await reviewedMutation('files/content?'+new URLSearchParams({path:file.path}),{method:'DELETE',headers:{'if-match':'"'+file.revision+'"','x-confirm-revision':file.revision}});
+ if(uploadTarget?.path===file.path)newUpload();
+ await loadFiles();await loadRevisions({...file,deleted_at:Date.now()});message('File deleted. Its tombstone and retained revisions are shown.');await refreshOverview();
+}
+async function loadRevisions(file,more=false) {
+ const load=++historyLoad,params=new URLSearchParams({path:file.path,limit:'50'});
+ if(more&&historyCursor)params.set('cursor',historyCursor);
+ const data=await api('files/revisions?'+params);if(load!==historyLoad)return;
+ historyFile=file;historyCursor=data.cursor;show('file-history',true);
+ const container=$('file-history');
+ if(!more)container.replaceChildren(node('h3','Revisions of '+file.path),node('p',`Current path precondition: ${file.revision}${file.deleted_at?' (tombstone)':''}. Restore creates a new owner revision.`));
+ container.querySelector('[data-more-revisions]')?.remove();
+ if(!data.revisions.length&&!more)container.append(node('p','No retained content remains. The tombstone still keeps this path.'));
+ for(const revision of data.revisions) {
+  const row=node('section',undefined,'card');row.append(node('h4',revision.revision),node('p',`${revision.current?'Current revision':'Retained revision'} · ${stamp(revision.created_at)}\n${revision.length} bytes · ${revision.media_type}\nSHA-256: ${revision.hash}\nAuthor: ${fileAuthor(revision)}\nRestore deadline: ${revision.restore_deadline?stamp(revision.restore_deadline):'None while current'}`));
+  row.append(button('Download revision',()=>ownerDownload(`files/revisions/${encodeURIComponent(revision.revision)}/content`,file.path.split('/').pop())));
+  if(!revision.current) {
+   const restore=button('Restore revision',()=>restoreRevision(file,revision));restore.disabled=revision.restore_deadline!==null&&revision.restore_deadline<=Date.now();row.append(restore);
+  }
+  container.append(row);
+ }
+ if(historyCursor) {const moreButton=button('More revisions',()=>loadRevisions(historyFile,true));moreButton.dataset.moreRevisions='';container.append(moreButton);}
+}
+async function restoreRevision(file,revision) {
+ if(!confirm(`Restore ${visibleText(file.path)} from revision ${revision.revision}?\nSHA-256: ${revision.hash}\nReplace exactly ${file.revision}${file.deleted_at?' (tombstone)':''}. This creates a new owner revision.`))return;
+ const result=await reviewedMutation('files/restore',{method:'POST',body:{source_revision:revision.revision,expected_revision:file.revision}});
+ if(uploadTarget?.path===file.path)newUpload();
+ await loadFiles();await loadRevisions({...file,revision:result.result_revision,deleted_at:null});message('File restored as revision '+result.result_revision+'.');await refreshOverview();
+}
+
+async function allSecretMetadata() {
+ const secrets=[];let cursor;
+ do {
+  const params=new URLSearchParams({limit:'100'});if(cursor)params.set('cursor',cursor);
+  const page=await api('secrets?'+params);secrets.push(...page.secrets);cursor=page.cursor;
+ } while(cursor);
+ return {secrets};
+}
+function secretScheme() {
+ const bearer=$('secret-scheme').value==='bearer';$('secret-header').readOnly=bearer;
+ if(bearer)$('secret-header').value='authorization';else if($('secret-header').value==='authorization')$('secret-header').value='x-api-key';
+}
+$('secret-scheme').addEventListener('change',secretScheme);
+function editSecret(secret) {
+ secretTarget=secret;$('secret-form').reset();$('secret-value').value='';$('secret-value').required=!secret;
+ $('secret-editor-title').textContent=secret?'Edit '+visibleText(secret.name):'Create a secret';
+ $('secret-version').textContent=secret?`Editing version ${secret.version} · value version ${secret.value_version}. Saved values stay hidden. Leave the replacement empty to keep the current key.`:'A new secret has no agent grants.';
+ $('secret-value-label').textContent=secret?'Replacement value (optional)':'Secret value';
+ $('secret-save').textContent=secret?'Save secret changes':'Create secret';show('secret-new',!!secret);
+ if(secret) {
+  $('secret-name').value=secret.name;$('secret-scheme').value=secret.scheme;$('secret-header').value=secret.injection_header;
+  $('secret-hosts').value=secret.hosts.join('\n');$('secret-enabled').checked=secret.enabled;
+ }
+ secretScheme();
+}
+$('secret-new').addEventListener('click',()=>editSecret());
+$('secret-next').addEventListener('click',()=>run(()=>loadSecrets(true)));
+async function loadSecrets(more=false) {
+ const load=++secretLoad,params=new URLSearchParams({limit:'50'});if(more&&secretCursor)params.set('cursor',secretCursor);
+ const data=await api('secrets?'+params);if(load!==secretLoad)return;secretCursor=data.cursor;
+ if(!more)$('secret-list').replaceChildren();show('secret-next',!!secretCursor);
+ if(!data.secrets.length&&!more)$('secret-list').append(node('p','No secrets yet.'));
+ for(const secret of data.secrets) {
+  const card=node('article',undefined,'card');card.append(node('h3',secret.name),node('p',`${secret.enabled?'Enabled':'Disabled'} · version ${secret.version} · value version ${secret.value_version}\nInjection: ${secret.injection_header}: ${secret.scheme==='bearer'?'Bearer ':''}[saved value]\nExact hosts: ${secret.hosts.join(', ')}`),node('h4','Granted agents'));
+  if(!secret.agents.length)card.append(node('p','No agents have a grant. Add named-secret use in Agents & grants.'));
+  for(const agent of secret.agents)card.append(node('p',`${agent.name} · ${agent.status} · ${agent.expires_at&&agent.expires_at<=Date.now()?'grant expired':agent.expires_at?'grant expires '+stamp(agent.expires_at):'no grant expiry'} · ${secret.enabled?'proxy use only':'secret disabled'}`));
+  const actions=node('div',undefined,'actions');actions.append(button('Edit secret',()=>{editSecret(secret);$('secret-name').focus();}),
+   button('Use history',async()=>{auditParams=new URLSearchParams({secret:secret.name,include_routine:'true'});$('audit-filter').reset();$('audit-filter').elements.namedItem('secret').value=secret.name;await switchView('audit');}));
+  if(secret.enabled)actions.append(button('Disable secret',async()=>{
+   if(!confirm(`Disable ${visibleText(secret.name)} at version ${secret.version}? Waiting requests will be invalidated.`))return;
+   const saved=await api(`secrets/${secret.id}/disable`,{method:'POST',body:{expected_version:secret.version}});
+   if(secretTarget?.id===secret.id)editSecret(saved);
+   await loadSecrets();message('Secret disabled. Waiting requests were invalidated.');await refreshOverview();
+  },'danger'));
+  card.append(actions);$('secret-list').append(card);
+ }
+}
+onSubmit('secret-form',async()=>{
+ const target=secretTarget,body={name:$('secret-name').value,hosts:$('secret-hosts').value.split(/\s+/).filter(Boolean),
+  injection_header:$('secret-header').value,scheme:$('secret-scheme').value,enabled:$('secret-enabled').checked};
+ if($('secret-value').value)body.value=$('secret-value').value;
+ // Clear even when validation or the request fails. No saved value is loaded.
+ $('secret-value').value='';
+ if(target)body.expected_version=target.version;
+ let saved;
+ try {saved=await api(target?'secrets/'+target.id:'secrets',{method:target?'PUT':'POST',body});}
+ finally {delete body.value;}
+ editSecret(saved);await loadSecrets();message('Secret saved. Its value cannot be retrieved. Waiting requests were invalidated.');await refreshOverview();
+});
+
+function resetManagement() {
+ newUpload();editSecret();mutationKeys.clear();fileCursor=secretCursor=historyCursor=undefined;historyFile=undefined;filePrefix='/';
+ fileLoad++;historyLoad++;secretLoad++;policyLoad++;settingsLoad++;policyControls=[];policySecrets=[];policyVersion=settingsVersion=undefined;
+ for(const id of ['file-list','file-history','secret-list','policy-rules','policy-version','settings-version','settings-origin'])$(id).replaceChildren();
+ for(const id of ['file-next','file-history','secret-next'])show(id,false);
+ for(const id of ['file-filter','settings-form'])$(id).reset();
+ for(const id of ['file-upload','secret-form'])$(id).querySelector('button:not([type=button])').disabled=false;
+ $('policy-save').disabled=$('settings-save').disabled=true;
+}
+
+let policySecrets=[];
+function addPolicyRule(rule={operation:'file.read',prefix:'/'}) {
+ if(policyControls.filter(r=>!r.removed).length>=100)throw new Error('Use at most 100 extra rules.');
+ const row=node('fieldset',undefined,'card');row.append(node('legend','Approval rule'));
+ const opField=node('div'),opLabel=node('label','Operation'),operation=node('select');operation.id='rule-operation-'+crypto.randomUUID();opLabel.htmlFor=operation.id;
+ for(const [value,text] of [['file.read','Read file content or metadata'],['file.write','Write a new file'],['files.list','List files in a folder'],['secrets.list','List secret metadata']]) {
+  const option=node('option',text);option.value=value;operation.append(option);
+ }
+ operation.value=rule.operation;opField.append(opLabel,operation);
+ const prefixLabel=node('label','Folder prefix (empty means all folders)'),prefix=node('input');prefix.value=rule.prefix??'';prefix.placeholder='/work/';prefixLabel.append(prefix);
+ const secretField=node('div'),secretLabel=node('label','Secret scope'),secret=node('select'),all=node('option','All granted secrets');secret.id='rule-secret-'+crypto.randomUUID();secretLabel.htmlFor=secret.id;all.value='';secret.append(all);
+ for(const s of policySecrets) {const option=node('option',s.name+(s.enabled?'':' (disabled)'));option.value=s.id;secret.append(option);}
+ secret.value=rule.secret_id??'';secretField.append(secretLabel,secret);
+ const scope=()=>{const isSecret=operation.value==='secrets.list';prefixLabel.hidden=isSecret;prefix.disabled=isSecret;secretField.hidden=!isSecret;secret.disabled=!isSecret;};
+ operation.addEventListener('change',scope);scope();
+ const control={operation,prefix,secret,removed:false};policyControls.push(control);
+ row.append(opField,prefixLabel,secretField,button('Remove rule',()=>{control.removed=true;row.remove();}));$('policy-rules').append(row);
+}
+async function loadPolicy() {
+ const load=++policyLoad;$('policy-save').disabled=true;policyVersion=undefined;
+ const [data,secretData]=await Promise.all([api('policy'),allSecretMetadata()]);if(load!==policyLoad)return;
+ policyVersion=data.version;policySecrets=secretData.secrets;policyControls=[];$('policy-rules').replaceChildren();
+ $('policy-version').textContent=`Editing version ${data.version}. Mandatory approvals: delete, replace, and every proxy send.`;
+ data.rules.forEach(addPolicyRule);$('policy-save').disabled=false;
+}
+$('policy-add').addEventListener('click',()=>run(async()=>{if(!policyVersion)throw new Error('Load the current policy before adding a rule.');addPolicyRule();}));
+$('policy-reload').addEventListener('click',()=>run(loadPolicy));
+onSubmit('policy-form',async()=>{
+ if(!policyVersion)throw new Error('Reload the current policy first.');
+ const rules=policyControls.filter(r=>!r.removed).map(r=>({operation:r.operation.value,...(r.operation.value==='secrets.list'?
+  (r.secret.value?{secret_id:r.secret.value}:{}):(r.prefix.value?{prefix:r.prefix.value}:{}))}));
+ if(!confirm(`Save ${rules.length} extra approval rule${rules.length===1?'':'s'} at version ${policyVersion}? Pending and ready requests will be invalidated.`))return;
+ await reviewedMutation('policy',{method:'PUT',body:{expected_version:policyVersion,rules}});
+ await loadPolicy();message('Policy saved. Pending and ready requests were invalidated.');await refreshOverview();
+});
+async function loadSettings() {
+ const load=++settingsLoad;$('settings-save').disabled=true;settingsVersion=undefined;
+ const data=await api('settings');if(load!==settingsLoad)return;settingsVersion=data.version;
+ $('settings-version').textContent='Editing version '+data.version+'. Updated '+stamp(data.updated_at)+'.';$('settings-origin').textContent='Your URL: '+data.public_origin;
+ $('settings-expiry').value=String(data.approval_ttl/60000);$('settings-quota').value=String(data.quota_bytes);$('settings-retention').value=String(data.retention_ms/86400000);
+ $('settings-maintenance').checked=data.maintenance;$('settings-save').disabled=false;
+}
+$('settings-reload').addEventListener('click',()=>run(loadSettings));
+$('settings-logout').addEventListener('click',logout);
+onSubmit('settings-form',async()=>{
+ if(!settingsVersion)throw new Error('Reload the current settings first.');
+ const body={expected_version:settingsVersion,approval_ttl:Math.round(Number($('settings-expiry').value)*60000),
+  quota_bytes:Number($('settings-quota').value),retention_ms:Math.round(Number($('settings-retention').value)*86400000),maintenance:$('settings-maintenance').checked};
+ if(!confirm(`Save settings at version ${settingsVersion}? Pending and ready requests will be invalidated.${body.maintenance?' Maintenance stops protected calls and scheduled work.':''}`))return;
+ await reviewedMutation('settings',{method:'PATCH',body});await loadSettings();message('Settings saved. Pending and ready requests were invalidated.');
+ if(!body.maintenance)await refreshOverview();
+});

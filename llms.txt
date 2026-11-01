@@ -33,7 +33,7 @@ the Worker does not currently serve documentation routes.
 
 ## Owner and contributors
 
-- [Owner app](docs/owner-web-app.md): Agent setup, grants, review, activity, audit export.
+- [Owner app](docs/owner-web-app.md): Agents, grants, files, secrets, policy, settings, approvals, audit.
 - [Deployment](docs/deploy.md): Cloudflare configuration, secret inputs, unfinished automation.
 - [Development](docs/development.md): Local setup and test commands.
 - [Operations](docs/operations.md): Recovery, migration, encryption keys, backup limitations.

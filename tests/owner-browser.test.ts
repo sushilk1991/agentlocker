@@ -4,13 +4,21 @@ import { database } from './helpers';
 import { setupAgent, key } from './approval-helpers';
 import { submitWrite, submitDelete } from '../src/file-actions';
 import { submitProxy } from '../src/proxy';
+import { replaceGrants } from '../src/agents';
+import { agentGrants } from '../src/owner';
+import { saveSecret } from '../src/secrets';
+import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 
 let f:Awaited<ReturnType<typeof database>>,browser:Browser,page:Page;
 const origin='http://127.0.0.1:18765';
 async function login() {await page.goto(origin);await page.getByLabel('Owner token',{exact:true}).fill(f.env.OWNER_TOKEN);await page.getByRole('button',{name:'Sign in',exact:true}).click();}
+async function downloadBytes(button:ReturnType<Page['getByRole']>) {
+ const waiting=page.waitForEvent('download');await button.click();return readFile((await (await waiting).path())!);
+}
 
 describe('owner app in Chromium with real Worker, D1, and R2',()=>{
- beforeAll(async()=>{f=await database(true,true,undefined,origin);await f.db.prepare('DELETE FROM settings').run();browser=await chromium.launch({headless:true});page=await browser.newPage();});
+ beforeAll(async()=>{f=await database(true,true,undefined,origin);await f.db.prepare('DELETE FROM settings').run();browser=await chromium.launch({headless:true});page=await browser.newPage();page.setDefaultTimeout(5000);});
  afterAll(async()=>{await browser?.close();await f?.runtime.dispose();});
  it('signs in, completes setup, creates an agent, reviews grants, issues a token, and clears private state',async()=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
@@ -33,6 +41,124 @@ describe('owner app in Chromium with real Worker, D1, and R2',()=>{
   await page.screenshot({path:'/tmp/agentlocker-owner-mobile.png',fullPage:true});
   await page.getByRole('button',{name:'Sign out',exact:true}).click();await ui(page.locator('#issued-token')).toBeEmpty();await ui(page.locator('#agent-list')).toBeEmpty();await ui(page.locator('#storage')).toBeEmpty();
   expect(await page.locator('body').innerText()).not.toContain('CLI <img');await page.reload();await ui(page.getByRole('heading',{name:'Sign in to your locker'})).toBeVisible();expect(errors).toEqual([]);
+ });
+ it('uploads, replaces, downloads, deletes an exact revision, and restores retained bytes',async()=>{
+  await login();await page.getByRole('button',{name:'Files',exact:true}).click();
+  const path='/browser/report.html',original=Buffer.concat([Buffer.from('<script>window.filePwned=1</script>'),Buffer.from([0,255,128])]),replacement=Buffer.from('replacement bytes');
+  const writes:Record<string,string>[]=[],deletes:Record<string,string>[]=[],restores:any[]=[];
+  const observe=(request:import('@playwright/test').Request)=>{
+   if(request.url().includes('/owner/files/content?')) {
+    if(request.method()==='PUT')writes.push(request.headers());if(request.method()==='DELETE')deletes.push(request.headers());
+   }
+   if(request.url().endsWith('/owner/files/restore'))restores.push(request.postDataJSON());
+  };
+  page.on('request',observe);
+  await page.getByLabel('File path',{exact:true}).fill(path);
+  await page.getByLabel('File to upload').setInputFiles({name:'report.html',mimeType:'text/html',buffer:original});await page.getByRole('button',{name:'Upload file',exact:true}).click();
+  await ui(page.locator('#notice')).toContainText('File saved at revision');
+  let file=await f.db.prepare('SELECT current_revision_id,deleted_at FROM files WHERE path=?').bind(path).first<any>();const first=file.current_revision_id;
+  expect(writes[0]['if-none-match']).toBe('*');expect(writes[0]['if-match']).toBeUndefined();
+  await page.locator('#file-filter').getByLabel('Folder prefix',{exact:true}).fill('/browser/');await page.getByRole('button',{name:'Browse files',exact:true}).click();
+  const card=page.locator('#file-list article').filter({has:page.getByRole('heading',{name:path,exact:true})});
+  await ui(card).toContainText('Author: Owner');expect((await downloadBytes(card.getByRole('button',{name:'Download file',exact:true}))).equals(original)).toBe(true);
+  expect(await page.evaluate(()=>('filePwned' in window))).toBe(false);
+  await card.getByRole('button',{name:'Replace file',exact:true}).click();await ui(page.locator('#file-precondition')).toContainText(first);
+  await page.getByLabel('File to upload').setInputFiles({name:'report.txt',mimeType:'text/plain',buffer:replacement});
+  let confirmation='';page.once('dialog',async dialog=>{confirmation=dialog.message();await dialog.accept();});
+  await page.getByRole('button',{name:'Upload file',exact:true}).click();await ui(page.locator('#notice')).toContainText('File saved at revision');
+  await ui.poll(async()=> (await f.db.prepare('SELECT current_revision_id FROM files WHERE path=?').bind(path).first<any>()).current_revision_id).not.toBe(first);
+  file=await f.db.prepare('SELECT current_revision_id FROM files WHERE path=?').bind(path).first<any>();const second=file.current_revision_id;
+  const digest=createHash('sha256').update(replacement).digest('hex');expect(confirmation.includes(first)&&confirmation.includes(digest)).toBe(true);
+  expect(writes[1]['if-match']).toBe('"'+first+'"');expect(writes[1]['x-confirm-content-sha256']).toBe(digest);
+  await card.getByRole('button',{name:'Revisions and restore',exact:true}).click();await ui(page.locator('#file-history')).toContainText('Restore deadline:');await ui(page.locator('#file-history')).toContainText(first);
+  page.once('dialog',dialog=>dialog.dismiss());await card.getByRole('button',{name:'Delete file',exact:true}).click();expect(deletes).toHaveLength(0);
+  page.once('dialog',async dialog=>{expect(dialog.message().includes(second)).toBe(true);await dialog.accept();});
+  await card.getByRole('button',{name:'Delete file',exact:true}).click();await ui(card).toContainText('Deleted');
+  expect(deletes[0]['if-match']).toBe('"'+second+'"');expect(deletes[0]['x-confirm-revision']).toBe(second);
+  await ui(card.getByRole('button',{name:'Download file',exact:true})).toHaveCount(0);
+  const old=page.locator('#file-history section').filter({has:page.getByRole('heading',{name:first,exact:true})});
+  expect((await downloadBytes(old.getByRole('button',{name:'Download revision',exact:true}))).equals(original)).toBe(true);
+  page.once('dialog',dialog=>dialog.accept());await old.getByRole('button',{name:'Restore revision',exact:true}).click();await ui(page.locator('#notice')).toContainText('File restored as revision');
+  expect(restores[0]).toEqual({source_revision:first,expected_revision:second});
+  expect((await downloadBytes(card.getByRole('button',{name:'Download file',exact:true}))).equals(original)).toBe(true);
+  const restored=await f.db.prepare('SELECT current_revision_id,deleted_at FROM files WHERE path=?').bind(path).first<any>();expect(restored.deleted_at).toBeNull();expect([first,second].includes(restored.current_revision_id)).toBe(false);
+  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.setViewportSize({width:1280,height:900});
+  page.off('request',observe);await page.getByRole('button',{name:'Sign out',exact:true}).click();
+  await ui(page.locator('#file-list')).toBeEmpty();await ui(page.locator('#file-history')).toBeEmpty();await ui(page.locator('#upload-path')).toHaveValue('');
+ });
+ it('keeps stale file preconditions and rejects a changed revision instead of overwriting it',async()=>{
+  const path='/browser/conflict.txt',initial=await submitWrite(f.context(),path,new TextEncoder().encode('initial'),'text/plain',null,key());
+  await login();await page.getByRole('button',{name:'Files',exact:true}).click();
+  const card=page.locator('#file-list article').filter({has:page.getByRole('heading',{name:path,exact:true})});
+  await card.getByRole('button',{name:'Replace file',exact:true}).click();
+  await page.getByLabel('File to upload').setInputFiles({name:'new.txt',mimeType:'text/plain',buffer:Buffer.from('stale replacement')});
+  const changed=await submitWrite(f.context(),path,new TextEncoder().encode('new current'),'text/plain',initial.result_revision!,key());
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Upload file',exact:true}).click();
+  await ui(page.locator('#notice')).toContainText('The file revision has changed');await ui(page.locator('#notice')).toContainText('Request');
+  await ui(page.locator('#file-precondition')).toContainText(initial.result_revision!);
+  expect((await f.db.prepare('SELECT current_revision_id FROM files WHERE path=?').bind(path).first<any>()).current_revision_id).toBe(changed.result_revision);
+  page.once('dialog',dialog=>dialog.accept());await card.getByRole('button',{name:'Delete file',exact:true}).click();await ui(page.locator('#notice')).toContainText('The file revision has changed');
+  expect((await f.db.prepare('SELECT deleted_at FROM files WHERE path=?').bind(path).first<any>()).deleted_at).toBeNull();
+  await page.getByRole('button',{name:'Sign out',exact:true}).click();
+ });
+ it('creates and replaces a secret without showing saved values, reviews grants, and disables it',async()=>{
+  const value='disposable-browser-secret-'+key(),replacement='disposable-replacement-'+key();
+  await login();await page.getByRole('button',{name:'Secrets',exact:true}).click();
+  await page.locator('#secret-form').getByLabel('Secret name',{exact:true}).fill('browser-provider');await page.getByLabel('Secret value',{exact:true}).fill(value);
+  await page.getByLabel('Exact allowed hosts').fill('api.example.com\nother.example.com');
+  const created=page.waitForResponse(response=>response.url().endsWith('/owner/secrets')&&response.request().method()==='POST');
+  await page.getByRole('button',{name:'Create secret',exact:true}).click();const response=await created,secret=await response.json();expect(response.status()).toBe(201);
+  await ui(page.locator('#notice')).toContainText('Secret saved');await ui(page.locator('#secret-value')).toHaveValue('');
+  expect(JSON.stringify(secret).includes(value)).toBe(false);expect((await page.locator('body').innerText()).includes(value)).toBe(false);
+  const card=page.locator('#secret-list article').filter({has:page.getByRole('heading',{name:'browser-provider',exact:true})});
+  await ui(card).toContainText('No agents have a grant');await ui(card).toContainText('api.example.com');await ui(card).toContainText('authorization: Bearer [saved value]');
+  const agent=await setupAgent(f,false),grants=await agentGrants(f.context(),agent.a.id);
+  await replaceGrants(f.context(),agent.a.id,grants.version,[],[{secret_id:secret.id,read:true}]);
+  await page.getByRole('button',{name:'Activity',exact:true}).click();await page.getByRole('button',{name:'Secrets',exact:true}).click();await ui(card).toContainText(agent.a.name);
+  await card.getByRole('button',{name:'Edit secret',exact:true}).click();await ui(page.getByLabel('Replacement value (optional)')).toHaveValue('');
+  await page.getByLabel('Credential format').selectOption('plain');await page.getByLabel('Injection header').fill('x-api-key');await page.getByLabel('Exact allowed hosts').fill('api.example.com');
+  await page.getByRole('button',{name:'Save secret changes',exact:true}).click();await ui(card).toContainText('version 2 · value version 1');await ui(card).toContainText('x-api-key: [saved value]');
+  await page.getByLabel('Replacement value (optional)').fill(replacement);await page.getByRole('button',{name:'Save secret changes',exact:true}).click();
+  await ui(card).toContainText('version 3 · value version 2');await ui(page.locator('#secret-value')).toHaveValue('');
+  expect((await page.locator('body').innerText()).includes(replacement)).toBe(false);
+  page.once('dialog',dialog=>dialog.accept());await card.getByRole('button',{name:'Disable secret',exact:true}).click();await ui(card).toContainText('Disabled · version 4');
+  await card.getByRole('button',{name:'Use history',exact:true}).click();await ui(page.locator('#audit-filter').getByLabel('Secret name',{exact:true})).toHaveValue('browser-provider');
+  await page.getByRole('button',{name:'Secrets',exact:true}).click();await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.setViewportSize({width:1280,height:900});
+  await page.getByLabel('Replacement value (optional)').fill('unsaved-disposable-key');await page.getByRole('button',{name:'Sign out',exact:true}).click();
+  await ui(page.locator('#secret-value')).toHaveValue('');await ui(page.locator('#secret-list')).toBeEmpty();await ui(page.locator('#secret-hosts')).toHaveValue('');
+ });
+ it('saves scoped policy and settings with versions, rejects a stale edit, and logs out from Settings',async()=>{
+  await saveSecret(f.context(),{name:'browser-policy',value:'disposable-policy-key',hosts:['api.example.com'],injection_header:'authorization',scheme:'bearer',enabled:false});
+  await login();await page.getByRole('button',{name:'Policy',exact:true}).click();await ui(page.locator('#policy-version')).toContainText('Mandatory approvals: delete, replace, and every proxy send');
+  await page.getByRole('button',{name:'Add rule',exact:true}).click();
+  const rule=page.locator('#policy-rules fieldset');await rule.getByLabel('Operation',{exact:true}).selectOption('file.read');await rule.getByLabel('Folder prefix').fill('/private/');
+  await page.getByRole('button',{name:'Add rule',exact:true}).click();const secretRule=rule.nth(1);
+  await secretRule.getByLabel('Operation',{exact:true}).selectOption('secrets.list');await secretRule.getByLabel('Secret scope').selectOption({label:'browser-policy (disabled)'});
+  const policyRequests:any[]=[];const capture=(request:import('@playwright/test').Request)=>{if(request.url().endsWith('/owner/policy')&&request.method()==='PUT')policyRequests.push(request.postDataJSON());};page.on('request',capture);
+  const before=await f.db.prepare('SELECT config_version FROM settings').first<any>();
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Save policy',exact:true}).click();await ui(page.locator('#notice')).toContainText('Policy saved');
+  expect(policyRequests[0].expected_version).toBe(before.config_version);
+  expect(policyRequests[0].rules[0]).toEqual({operation:'file.read',prefix:'/private/'});expect(Object.keys(policyRequests[0].rules[1]).sort()).toEqual(['operation','secret_id']);
+  expect((await f.db.prepare('SELECT operation,prefix FROM approval_rules WHERE operation=?').bind('file.read').first<any>()).prefix).toBe('/private/');
+  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.getByRole('button',{name:'Settings',exact:true}).click();await ui(page.locator('#settings-version')).toContainText('Editing version');
+  await ui(page.locator('#settings')).toContainText('docs/operations.md');await ui(page.locator('#settings')).toContainText('Audit metadata is kept indefinitely');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.setViewportSize({width:1280,height:900});
+  await page.getByLabel('Default approval expiry in minutes').fill('9');await page.getByLabel('File quota in bytes').fill('209715200');await page.getByLabel('File history retention in days').fill('10');
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Save settings',exact:true}).click();await ui(page.locator('#notice')).toContainText('Settings saved');
+  const saved=await f.db.prepare('SELECT config_version,approval_ttl,quota_bytes,retention_ms FROM settings').first<any>();
+  expect(saved).toEqual({config_version:before.config_version+2,approval_ttl:9*60000,quota_bytes:209715200,retention_ms:10*86400000});
+  // A separate owner update must not silently advance this form's precondition.
+  const update=await f.runtime.dispatchFetch(origin+'/api/v1/owner/settings',{method:'PATCH',headers:{authorization:'Bearer '+f.env.OWNER_TOKEN,'content-type':'application/json','idempotency-key':key()},body:JSON.stringify({expected_version:saved.config_version,approval_ttl:8*60000})});expect(update.status).toBe(200);
+  await page.getByLabel('Default approval expiry in minutes').fill('7');page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Save settings',exact:true}).click();
+  await ui(page.locator('#notice')).toContainText('This version has changed');await ui(page.locator('#notice')).toContainText('Request');
+  expect((await f.db.prepare('SELECT approval_ttl FROM settings').first<any>()).approval_ttl).toBe(8*60000);
+  await page.getByRole('button',{name:'Reload settings',exact:true}).click();await ui(page.getByLabel('Default approval expiry in minutes')).toHaveValue('8');
+  await page.getByRole('button',{name:'Policy',exact:true}).click();await rule.getByRole('button',{name:'Remove rule',exact:true}).first().click();await rule.getByRole('button',{name:'Remove rule',exact:true}).first().click();
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Save policy',exact:true}).click();await ui(page.locator('#notice')).toContainText('Policy saved');expect((await f.db.prepare('SELECT count(*) AS n FROM approval_rules').first<any>()).n).toBe(0);
+  await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Sign out of this locker',exact:true}).click();
+  await ui(page.locator('#policy-rules')).toBeEmpty();await ui(page.locator('#settings-version')).toBeEmpty();await ui(page.locator('#settings-quota')).toHaveValue('');
+  page.off('request',capture);
  });
  it('loads complete inert request data before approval and applies an explicit batch decision',async()=>{
   const agent=await setupAgent(f),body='a'.repeat(7000)+'\nDANGEROUS_SUFFIX <script>window.pwned=1</script>\u001b\u202e';

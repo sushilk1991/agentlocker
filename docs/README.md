@@ -32,8 +32,8 @@ The [progress notes](../PROGRESS.md) record the checks that have actually run.
 The [requirements](requirements.md) describe the release target. They include
 features that are not finished yet.
 
-The owner app has setup, agents, grants, approvals, activity, and audit views.
-File/secret management screens and policy/settings forms remain unfinished.
+The owner app has setup, agents, grants, files, secrets, policy, settings,
+approvals, activity, and audit views.
 The HTTP endpoint inventory is implemented, including identity, paginated agent
 lists, owner investigation, and policy/settings updates. SDK and CLI identity and
 list flows are tested against it. MCP uses the same shared identity service.

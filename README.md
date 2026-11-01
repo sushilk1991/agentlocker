@@ -10,8 +10,8 @@ Each owner runs a separate Cloudflare Worker with D1 and a private R2 bucket.
 There is no shared service or inbox. The code and docs use the [MIT license](LICENSE).
 
 This is a work in progress. The file API, approvals, encrypted secrets proxy,
-owner activity and review app, remote MCP server, SDK, and CLI have local tests.
-File and secret management screens and policy/settings forms are unfinished.
+owner web app, remote MCP server, SDK, and CLI have local tests. The app includes
+file history and restore, secret management, policy, settings, and approval review.
 Deployment automation and a fresh-account deployment check are still needed.
 See [PROGRESS.md](PROGRESS.md).
 
