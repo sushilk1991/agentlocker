@@ -1,5 +1,6 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
+import { build } from 'esbuild';
 import { unstable_splitSqlQuery } from 'wrangler';
 import type { Context, Env, Identity } from '../src/types';
 
@@ -8,12 +9,17 @@ export async function applyMigration(db: D1Database, name: string) {
  await db.batch(unstable_splitSqlQuery(sql).map(query => db.prepare(query)));
 }
 
-export async function database(migrate = true) {
+export async function database(migrate = true, worker = false) {
+ const bindings = {OWNER_TOKEN: 'owner-canary-' + 'a'.repeat(64), LOCKER_ENCRYPTION_KEY: btoa('k'.repeat(32)),
+  ENCRYPTION_KEY_VERSION: '1', PUBLIC_ORIGIN: 'https://locker.example.com', DEPLOYMENT_ID: 'test-deployment-id'};
+ const script = worker ? (await build({entryPoints: ['src/index.ts'], bundle: true, write: false, format: 'esm', platform: 'browser'})).outputFiles[0].text
+  : 'export default { fetch() { return new Response("test"); } };';
  const runtime = new Miniflare({
   modules: true,
-  script: 'export default { fetch() { return new Response("test"); } };',
+  script, bindings,
   compatibilityDate: '2025-10-14',
   d1Databases: ['DB'],
+  r2Buckets: ['FILES'],
  });
  const db = await runtime.getD1Database('DB') as unknown as D1Database;
  if (migrate) {
@@ -23,7 +29,7 @@ export async function database(migrate = true) {
   }
  }
  const env = {
-  DB: db, FILES: {} as R2Bucket, OWNER_TOKEN: 'owner-canary-' + 'a'.repeat(64),
+  DB: db, FILES: await runtime.getR2Bucket('FILES') as unknown as R2Bucket, OWNER_TOKEN: 'owner-canary-' + 'a'.repeat(64),
   LOCKER_ENCRYPTION_KEY: btoa('k'.repeat(32)), ENCRYPTION_KEY_VERSION: '1',
   PUBLIC_ORIGIN: 'https://locker.example.com', DEPLOYMENT_ID: 'test-deployment-id',
  } satisfies Env;
