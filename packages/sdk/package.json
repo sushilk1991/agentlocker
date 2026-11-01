@@ -1,0 +1,23 @@
+{
+  "name": "@agentlocker/sdk",
+  "version": "0.1.0",
+  "description": "Fetch client for a self-hosted Agent Locker",
+  "type": "module",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --root ../.. tests/sdk.test.ts"
+  },
+  "sideEffects": false
+}

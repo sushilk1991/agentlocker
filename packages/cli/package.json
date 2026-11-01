@@ -1,0 +1,12 @@
+{
+  "name": "agentlocker",
+  "version": "0.1.0",
+  "description": "Command line client for a self-hosted Agent Locker",
+  "type": "module",
+  "license": "MIT",
+  "engines": {"node": ">=20.19"},
+  "bin": {"agentlocker": "dist/index.js"},
+  "files": ["dist", "README.md", "LICENSE"],
+  "dependencies": {"@agentlocker/sdk": "0.1.0"},
+  "scripts": {"build": "node ../../scripts/build-cli.mjs"}
+}

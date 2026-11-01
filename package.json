@@ -23,7 +23,9 @@
     "deploy": "node scripts/deploy.mjs",
     "setup:local": "node scripts/setup-local.mjs",
     "cli": "tsx packages/cli/src/index.ts",
-    "sdk:build": "tsc -p packages/sdk/tsconfig.json"
+    "sdk:build": "tsc -p packages/sdk/tsconfig.json",
+    "clients:build": "npm run sdk:build && npm run build --workspace packages/cli",
+    "test:clients": "vitest run tests/sdk.test.ts tests/cli.test.ts tests/clients-integration.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
