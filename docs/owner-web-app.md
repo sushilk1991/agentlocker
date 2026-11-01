@@ -4,6 +4,13 @@ The React workspace opens at `/` or any sidebar route. It includes sign-in,
 first-run setup, approvals, agents, grants, files, keys, audit, policy, and settings.
 Each route loads when opened. The old management app has been removed.
 
+Use the sidebar on desktop. On a phone, Open navigation shows the same screens.
+Choosing a screen closes the menu. Escape closes it and returns focus to the
+menu button. Keyboard users can use Skip to content to reach the main screen.
+The active screen appears in the navigation and at the top of the page.
+The Approvals badge shows the pending count. Refresh requests the latest
+activity. The count and last successful refresh remain visible on every screen.
+
 The theme follows your system by default. Its light or dark preference is saved
 in browser storage. Tokens, review data, and secret values are not saved there.
 Signing out aborts requests and clears the private query cache and review data.
@@ -54,7 +61,7 @@ The audit view filters by time, agent, token, operation, file path or folder pre
 
 Audit metadata is kept indefinitely. The overview shows the latest event number and an estimated metadata size. The estimate samples the most recent 100 entries; it is not a Cloudflare billing figure or a full database size. Polling does not scan all retained audit rows. File usage includes retained and staged bytes.
 
-The app provides setup, agents, tokens, grants, files, secrets, policy, settings, approval review, activity, and audit views. Named-agent connection checks, deployment tooling, and backup/recovery checks remain unfinished. See the [documentation index](README.md) for the current gaps.
+The app provides setup, agents, tokens, grants, files, keys, policy, settings, approval review, activity, and audit views. Named-agent connection checks, fresh-account deployment checks, and backup/recovery checks remain unfinished. See the [documentation index](README.md) for the current gaps.
 
 ## Owner routes
 
@@ -92,3 +99,19 @@ The file form sends `If-None-Match: *` for creation. Replacement sends an exact 
 ## Local checks
 
 Run `npx playwright install chromium` once before browser tests. Run `npm test` for all tests or `npm run test:browser` for the owner browser checks. They serve a bundled Worker on loopback, use real local D1/R2, and stop the runtime and browser afterward. Coverage includes file upload/replacement/download/delete/restore, stale file revisions, hidden saved secret values, secret policy/value updates and disable, scoped policy and settings saves, version conflicts, sign-out clearing, and the full approval flow. The tests create only disposable local credentials. No Cloudflare account is needed.
+
+Every flow runs in Chromium at 1280px and 390px, in light and dark. Shell checks
+cover keyboard navigation, menu focus, theme changes, route loading, browser
+history, and an open review expiring. Approval checks include complete 10 MiB
+content, digest failures, batch conflicts, polling, and late responses after
+sign-out.
+
+The gallery saves PNGs beside the checkout in `../agentlocker-shots/`.
+In the QA workspace, this is `/workspace/agentlocker-shots/`. Main screens use
+the full page. Dialogs use the viewport. Filenames
+include the screen, theme, and width, such as `files-dark-390.png`. It captures
+sign-in, setup, all seven workspace screens, complete review, confirmation,
+agent grants, file history, expired review, and the phone menu. It waits for
+loaded data and checks page overflow. Screenshots use local sample data and
+never capture issued tokens or entered secret values. They are review artifacts;
+the suite does not compare them against pixel baselines.

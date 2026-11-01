@@ -37,7 +37,7 @@
   --background:#f8faf9;
   --foreground:#202b29;
   --card:#fff;
-  --muted:#6c7773;
+  --muted:#626e68;
   --border:#e1e7e4;
   --accent:#18634f;
   --primary-foreground:#fff;
@@ -477,6 +477,8 @@ nav a.active {
   border-bottom: 1px solid var(--border);
 }
 .badge {
+  display: inline-block;
+  white-space: nowrap;
   font-size: 10px;
   line-height: 1.7;
   border: 1px solid var(--border);
@@ -506,6 +508,7 @@ nav a.active {
 .table-panel { padding: 0; overflow: hidden; }
 .agents-heading { margin-top: 24px; }
 .agents-heading > p { max-width: 550px; }
+.mobile-cell-label { display: none; }
 .content-dialog {
  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
  width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow: auto;
@@ -966,6 +969,9 @@ footer a:hover {
 }
 
 /* Owner management forms share the same controls at phone and desktop widths. */
+.page-description + form.panel, .page-description + section.panel { margin-top: 20px; }
+#settings { margin-top: 20px; }
+.panel > .hint { margin-top: 8px; }
 textarea {
  font: inherit; width: 100%; min-width: 0; resize: vertical;
  border: 1px solid var(--border); border-radius: 7px; padding: 9px 11px;
@@ -986,7 +992,17 @@ textarea {
 #audit-events .data-table th { min-width: 0; }
 #audit-events .data-table td { overflow-wrap: anywhere; }
 @media (max-width: 700px) {
+ .agents-table.table-panel { padding: 0; }
+ .agents-table .data-table, #audit-events .data-table { min-width: 0; }
+ .agents-table thead, #audit-events thead { display: none; }
+ .agents-table tbody, .agents-table tr, #audit-events tbody, #audit-events tr { display: block; }
+ .agents-table tr, #audit-events tr { padding: 16px; border-bottom: 1px solid var(--border); }
+ .agents-table tr:last-child, #audit-events tr:last-child { border-bottom: 0; }
+ .agents-table .data-table td, #audit-events .data-table td { display: block; border: 0; padding: 0; }
+ .agents-table .data-table td + td, #audit-events .data-table td + td { margin-top: 12px; }
+ .agents-table .data-table td:nth-child(2), .agents-table .data-table td:nth-child(3) { display: inline-block; width: 50%; }
+ .agents-table .button { width: 100%; }
+ .mobile-cell-label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; }
  .inline-form { flex-direction: column; align-items: stretch; }
  #audit-events.table-panel { padding: 0; }
- #audit-events .data-table { min-width: 720px; }
 }

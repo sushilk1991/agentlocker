@@ -33,7 +33,7 @@ the Worker does not currently serve documentation routes.
 
 ## Owner and contributors
 
-- [Owner app](docs/owner-web-app.md): Agents, grants, files, secrets, policy, settings, approvals, audit.
+- [Owner app](docs/owner-web-app.md): Desktop and phone navigation, light/dark themes, agents, grants, files, keys, policy, settings, approvals, audit, and Chromium checks.
 - [Deployment](docs/deploy.md): Cloudflare button, terminal deploy, secret inputs, safe retries, smoke checks.
 - [Development](docs/development.md): Local setup and test commands.
 - [Operations](docs/operations.md): Recovery, migration, encryption keys, backup limitations.
@@ -43,3 +43,8 @@ the Worker does not currently serve documentation routes.
 
 The owner workspace is at `/`. It includes approvals, agents, task tokens,
 grants, files, keys, audit, policy, and settings. All screens use the owner HTTP API.
+The phone menu has the same screens as the desktop sidebar. The pending count
+and last refresh time stay visible. Only the theme preference is saved in browser
+storage. Reloading or signing out clears the owner session and private data.
+`npm run test:browser` checks all flows at 1280px and 390px in light and dark.
+Screen captures use local sample data and go beside the checkout in `../agentlocker-shots/`.

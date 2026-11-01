@@ -51,7 +51,7 @@ function Workspace() {
     <p className="hint">Use the token saved during deployment. It stays in this tab’s memory. Reloading signs you out.</p><Button disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button></form>
    <p id="notice" role="status" className={notice ? "warning" : undefined}>{notice}</p><details><summary>First time here?</summary><p>Set OWNER_TOKEN and a separate LOCKER_ENCRYPTION_KEY as Worker secrets. Keep your owner token in a password manager and an offline copy of your encryption key and its version.</p><p>Replace a lost owner token through Cloudflare or Wrangler.</p></details>
   </main></div> : <SessionContext.Provider value={{api: session.api, signOut}}>
-   {!session.data.setup_complete ? <Setup session={session.data} api={session.api} onDone={() => setSession({...session, data: {...session.data, setup_complete: true}})} signOut={signOut} /> :
+   {!session.data.setup_complete ? <div className="auth-layout"><Setup session={session.data} api={session.api} onDone={() => setSession({...session, data: {...session.data, setup_complete: true}})} signOut={signOut} /></div> :
     <Suspense fallback={<main className="page"><Skeleton /></main>}><Routes><Route element={<Shell />}>
      <Route index element={<Navigate to="/approvals" replace />} /><Route path="approvals" element={<Approvals />} />
      <Route path="agents" element={<Agents />} />

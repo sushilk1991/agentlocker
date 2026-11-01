@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { chromium, expect as ui, type Browser, type Page, type Request } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { database } from './helpers';
+import { browserMatrix } from './browser-helpers';
 import { key, setupAgent } from './approval-helpers';
 import { submitWrite, submitDelete } from '../src/file-actions';
 import { agentGrants } from '../src/owner';
@@ -10,9 +11,10 @@ import { replaceGrants } from '../src/agents';
 import { saveSecret } from '../src/secrets';
 
 const origin = 'http://127.0.0.1:18766';
-describe.each([1280, 390])('React owner management at %ipx with real Worker, D1, R2', width => {
+describe.each(browserMatrix)('React owner management at $width px in $theme with real Worker, D1, R2', ({width, theme}) => {
  let f: Awaited<ReturnType<typeof database>>, browser: Browser, page: Page;
- beforeAll(async () => {f = await database(true, true, undefined, origin); browser = await chromium.launch({headless: true}); page = await browser.newPage({viewport: {width, height: 900}}); page.setDefaultTimeout(5000);});
+ beforeAll(async () => {f = await database(true, true, undefined, origin); browser = await chromium.launch({headless: true}); page = await browser.newPage({viewport: {width, height: 900}, colorScheme: theme}); page.setDefaultTimeout(5000);});
+ beforeEach(async () => {if (page.url().startsWith(origin)) await page.evaluate(() => localStorage.removeItem('locker-theme'));});
  afterAll(async () => {await browser?.close(); await f?.runtime.dispose();});
  async function login(route: string) {
   await page.goto(origin + route); await page.getByLabel('Owner token', {exact: true}).fill(f.env.OWNER_TOKEN); await page.getByRole('button', {name: 'Sign in', exact: true}).click();
@@ -59,7 +61,7 @@ describe.each([1280, 390])('React owner management at %ipx with real Worker, D1,
   await old.getByRole('button', {name: 'Restore revision', exact: true}).click(); await confirm(); await ui(page.locator('#notice')).toContainText('File restored as revision');
   expect(restores[0]).toEqual({source_revision: first, expected_revision: second}); expect((await downloaded(card.getByRole('button', {name: 'Download file', exact: true}))).bytes.equals(original)).toBe(true);
   const restored = await f.db.prepare('SELECT current_revision_id,deleted_at FROM files WHERE path=?').bind(path).first<any>(); expect(restored.deleted_at).toBeNull(); expect([first, second].includes(restored.current_revision_id)).toBe(false);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); await page.screenshot({path: `/tmp/agentlocker-files-${width}.png`, fullPage: true});
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   page.off('request', observe); await logout(); await ui(page.locator('#file-list')).toHaveCount(0); await ui(page.locator('#file-history')).toHaveCount(0); await ui(page.locator('#upload-path')).toHaveCount(0);
  });
  it('refuses stale replace, delete, and restore preconditions and never refreshes an open upload draft', async () => {
@@ -99,7 +101,7 @@ describe.each([1280, 390])('React owner management at %ipx with real Worker, D1,
   await card.getByRole('button', {name: 'Disable secret', exact: true}).click(); await confirm(); await ui(card).toContainText('Disabled · version 4');
   await card.getByRole('link', {name: 'Use history', exact: true}).click(); await ui(page.locator('#audit-filter').getByLabel('Secret name', {exact: true})).toHaveValue('browser-provider');
   await nav('Keys'); await card.getByRole('button', {name: 'Edit secret', exact: true}).click(); await page.getByLabel('Replacement value (optional)').fill('unsaved-disposable-key');
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); await page.screenshot({path: `/tmp/agentlocker-keys-${width}.png`, fullPage: true});
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await logout(); await ui(page.locator('#secret-value')).toHaveCount(0); await ui(page.locator('#secret-list')).toHaveCount(0);
   expect((await page.locator('body').innerText()).includes('browser-provider')).toBe(false);
  });
@@ -136,7 +138,7 @@ describe.each([1280, 390])('React owner management at %ipx with real Worker, D1,
   await page.getByRole('button', {name: 'Reload settings', exact: true}).click(); await ui(page.getByLabel('Default approval expiry in minutes')).toHaveValue('8');
   await nav('Policy'); await rule.getByRole('button', {name: 'Remove rule', exact: true}).first().click(); await rule.getByRole('button', {name: 'Remove rule', exact: true}).first().click();
   await page.getByRole('button', {name: 'Save policy', exact: true}).click(); await confirm(); await ui(page.locator('#notice')).toContainText('Policy saved'); expect((await f.db.prepare('SELECT count(*) AS n FROM approval_rules').first<any>()).n).toBe(0);
-  await nav('Settings'); await ui(page.locator('#settings-version')).toContainText('Editing version ' + (saved.config_version + 2) + '.'); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); await page.screenshot({path: `/tmp/agentlocker-settings-${width}.png`, fullPage: true});
+  await nav('Settings'); await ui(page.locator('#settings-version')).toContainText('Editing version ' + (saved.config_version + 2) + '.'); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole('button', {name: 'Sign out of this locker', exact: true}).click(); await ui(page.getByRole('heading', {name: 'Sign in to your locker'})).toBeVisible();
   await ui(page.locator('#settings-version')).toHaveCount(0); await ui(page.locator('#settings-quota')).toHaveCount(0); expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]); page.off('request', capture);
  });
@@ -157,7 +159,9 @@ describe.each([1280, 390])('React owner management at %ipx with real Worker, D1,
   const agent = await setupAgent(f), path = '/mine/audit.txt', file = await submitWrite(agent.c, path, new TextEncoder().encode('audit'), 'text/plain', null, key());
   const deletion = await submitDelete(agent.c, path, file.result_revision!, key());
   // More than one API page, containing untrusted text, with an exact trace filter.
-  const trace = key(), start = Date.now() - 60000;
+  // Chromium trims fractional trailing zeroes; Playwright fill checks the exact
+  // serialized value. Keep a stable millisecond part while testing precision.
+  const trace = key(), start = Math.floor((Date.now() - 60000) / 1000) * 1000 + 123;
   await f.db.batch(Array.from({length: 55}, (_, index) => f.db.prepare("INSERT INTO audit_events(request_id,actor_kind,actor_name,operation,target,decision,result,reason_code) VALUES(?,'owner',?,'file.read',?,'allow','read','read')").bind(trace, '=FORMULA <img src=x onerror=window.auditPwned=1>\u202e', '/audit/' + index)));
   await login('/audit?request_id=' + trace + '&include_routine=true'); const filters = page.locator('#audit-filter');
   await ui(filters.getByLabel('Request ID', {exact: true})).toHaveValue(trace); await ui(page.locator('#audit-events tbody tr')).toHaveCount(50);
@@ -173,7 +177,7 @@ describe.each([1280, 390])('React owner management at %ipx with real Worker, D1,
   await filters.getByLabel('Folder prefix', {exact: true}).fill('/audit/'); await filters.getByLabel('Operation', {exact: true}).fill('file.read'); await filters.getByLabel('Decision', {exact: true}).fill('allow'); await filters.getByLabel('Outcome', {exact: true}).fill('read');
   const localStart = await page.evaluate(value => new Date(value - new Date(value).getTimezoneOffset() * 60000).toISOString().slice(0, 23), start); await filters.getByLabel('From', {exact: true}).fill(localStart);
   await page.getByRole('button', {name: 'Apply filters', exact: true}).click(); await ui(page.locator('#audit-events tbody tr')).toHaveCount(50); const params = new URL(page.url()).searchParams; expect(params.get('from')).toBe(String(start)); expect(params.get('prefix')).toBe('/audit/');
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); await page.screenshot({path: `/tmp/agentlocker-audit-${width}.png`, fullPage: false});
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await logout(); await ui(page.locator('#audit-events')).toHaveCount(0);
  });
 });

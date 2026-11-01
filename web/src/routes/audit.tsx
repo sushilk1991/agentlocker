@@ -37,10 +37,10 @@ export default function Audit() {
   {task.error && <p role="alert" className="warning">{task.error}</p>}{list.isPending && <Skeleton />}
   {list.error && <p role="alert" className="warning">{visibleText(list.error.message)} <Button variant="outline" onClick={() => void list.refetch()}>Reload audit</Button></p>}
   <section id="audit-events" className="panel table-panel">{list.data?.pages[0].events.length === 0 ? <p className="empty">No matching events.</p> : <Table><TableHeader><TableRow><TableHead>Time / actor</TableHead><TableHead>Action / target</TableHead><TableHead>Decision / result</TableHead><TableHead>Trace</TableHead></TableRow></TableHeader><TableBody>{list.data?.pages.flatMap(page => page.events).map(event => <TableRow key={event.id}>
-   <TableCell>{stamp(event.timestamp)}<p>{visibleText(event.actor_name)} ({event.actor_kind})</p><small>Event {event.id}</small></TableCell>
-   <TableCell><strong>{visibleText(event.operation)}</strong><p>{visibleText(event.target)}</p></TableCell>
-   <TableCell><Badge variant={['failed', 'unknown', 'denied'].includes(event.result) ? 'destructive' : 'outline'}>{event.decision} · {event.result}</Badge><p>{visibleText(event.reason_code)}</p></TableCell>
-   <TableCell><small>Request: {visibleText(event.request_id)}</small>{event.action_id && <p><Link className="text-link" to={'/audit?' + new URLSearchParams({action_id: event.action_id, include_routine: 'true'})}>Action: {event.action_id}</Link></p>}{event.token_id && <p>Token: {event.token_id}</p>}
+   <TableCell><span className="mobile-cell-label">Time / actor</span>{stamp(event.timestamp)}<p>{visibleText(event.actor_name)} ({event.actor_kind})</p><small>Event {event.id}</small></TableCell>
+   <TableCell><span className="mobile-cell-label">Action / target</span><strong>{visibleText(event.operation)}</strong><p>{visibleText(event.target)}</p></TableCell>
+   <TableCell><span className="mobile-cell-label">Decision / result</span><Badge variant={['failed', 'unknown', 'denied'].includes(event.result) ? 'destructive' : 'outline'}>{event.decision} · {event.result}</Badge><p>{visibleText(event.reason_code)}</p></TableCell>
+   <TableCell><span className="mobile-cell-label">Trace</span><small>Request: {visibleText(event.request_id)}</small>{event.action_id && <p><Link className="text-link" to={'/audit?' + new URLSearchParams({action_id: event.action_id, include_routine: 'true'})}>Action: {event.action_id}</Link></p>}{event.token_id && <p>Token: {event.token_id}</p>}
     <Button variant="ghost" aria-expanded={expanded === event.id} onClick={() => setExpanded(expanded === event.id ? undefined : event.id)}>Event details {event.id}</Button>
     {expanded === event.id && <pre>{visibleText(JSON.stringify(event, null, 2))}</pre>}</TableCell>
   </TableRow>)}</TableBody></Table>}</section>

@@ -14,6 +14,9 @@ owner web app, remote MCP server, SDK, and CLI have local tests. The app include
 file history and restore, secret management, policy, settings, and approval review.
 The React workspace includes approvals, agents, task tokens, grants, files, keys,
 audit, policy, and settings.
+Use the sidebar on desktop or the navigation button on a phone. The app follows
+your system theme. You can choose light or dark in the navigation. The pending
+count and last refresh time stay visible as you move between screens.
 Deployment scripts and a local smoke check are included. A fresh-account
 Cloudflare deployment check is still needed.
 See [PROGRESS.md](PROGRESS.md).
@@ -100,6 +103,7 @@ npx playwright install chromium
 npm run typecheck
 npm test
 npm run test:mcp
+npm run test:browser
 npm run build
 ```
 
@@ -107,6 +111,8 @@ npm run build
 check uses the real official client against a disposable local Worker. The build
 command is a Wrangler dry-run. These commands do not deploy. Chromium may need
 system libraries on a fresh Linux machine.
+`npm run test:browser` runs the Chromium flows at 1280px and 390px in light and
+dark. It saves screenshots beside the checkout in `../agentlocker-shots/`.
 
 See [local development](docs/development.md) for running your own local locker.
 Read [AGENTS.md](AGENTS.md) before changing the code.

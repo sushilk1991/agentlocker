@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { chromium, expect as ui, type Browser, type Page } from '@playwright/test';
 import { database } from './helpers';
+import { browserMatrix } from './browser-helpers';
 import { setupAgent, key } from './approval-helpers';
 import { submitWrite, submitDelete } from '../src/file-actions';
 import { submitProxy } from '../src/proxy';
@@ -21,8 +22,9 @@ async function signOutReact() {
  await ui(page.getByRole('heading', {name:'Sign in to your locker'})).toBeVisible();
 }
 
-describe.each([1280, 390])('React owner approvals at %ipx with real Worker, D1, R2', width => {
- beforeAll(async () => {f=await database(true,true,undefined,origin);browser=await chromium.launch({headless:true});page=await browser.newPage({viewport:{width,height:900}});page.setDefaultTimeout(5000);});
+describe.each(browserMatrix)('React owner approvals at $width px in $theme with real Worker, D1, R2', ({width, theme}) => {
+ beforeAll(async () => {f=await database(true,true,undefined,origin);browser=await chromium.launch({headless:true});page=await browser.newPage({viewport:{width,height:900},colorScheme:theme});page.setDefaultTimeout(5000);});
+ beforeEach(async () => {if (page.url().startsWith(origin)) await page.evaluate(() => localStorage.removeItem('locker-theme'));});
  afterAll(async () => {await browser?.close();await f?.runtime.dispose();});
  it('sets up, keeps credentials in memory, persists only theme, navigates, and clears sign-out state', async () => {
   await f.db.prepare('UPDATE settings SET setup_complete=0').run();
@@ -41,13 +43,12 @@ describe.each([1280, 390])('React owner approvals at %ipx with real Worker, D1, 
    await page.keyboard.press('Escape');await ui(menu).toBeFocused();await menu.click();
   }
   await page.getByRole('button',{name:'Theme: system. Switch to light'}).click();
-  await page.screenshot({path:`/tmp/agentlocker-foundation-light-${width}.png`,fullPage:true});
   await page.getByRole('button',{name:'Theme: light. Switch to dark'}).click();
   expect(await page.evaluate(()=>document.documentElement.classList.contains('dark'))).toBe(true);
   await page.getByRole('link',{name:'Files',exact:true}).click();await ui(page.getByRole('heading',{name:'Upload a new file',exact:true})).toBeVisible();
   if(width===390)await page.getByRole('button',{name:'Open navigation'}).click();
   await page.getByRole('link',{name:'Approvals',exact:false}).click();await ui(page.getByRole('heading',{name:'Review requests'})).toBeVisible();
-  await page.screenshot({path:`/tmp/agentlocker-foundation-dark-${width}.png`,fullPage:true});
+
   await signOutReact();await page.reload();await ui(page.getByRole('heading',{name:'Sign in to your locker'})).toBeVisible();
   expect(await page.evaluate(()=>localStorage.getItem('locker-theme'))).toBe('dark');
   expect(await page.evaluate(()=>(window as any).cspViolations)).toEqual([]);expect(errors).toEqual([]);
@@ -135,7 +136,7 @@ describe.each([1280, 390])('React owner approvals at %ipx with real Worker, D1, 
   expect((await f.db.prepare('SELECT COUNT(*) AS n FROM agent_tokens WHERE agent_id=? AND revoked_at IS NULL').bind(agent.id).first<any>()).n).toBe(0);
   expect(await page.evaluate(()=>('agentPwned' in window))).toBe(false);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await page.screenshot({path:`/tmp/agentlocker-agents-${width}.png`,fullPage:false});
+
   await dialog.getByRole('button',{name:'Close dialog',exact:true}).click();await page.unroute('**/owner/secrets?**');await signOutReact();
   expect(await page.locator('body').innerText()).not.toContain(name);
  });
@@ -168,7 +169,7 @@ describe.each([1280, 390])('React owner approvals at %ipx with real Worker, D1, 
   await page.locator('#approval-list label').filter({hasText:'file.delete'}).getByRole('checkbox').check();
   await ui(page.getByRole('button',{name:'Approve 2 selected',exact:true})).toBeDisabled();await ui(page.getByRole('button',{name:'Approve 2 selected',exact:true})).toBeEnabled();
   await ui(page.locator('#review-list')).toContainText('AP8BgA==');
-  await page.screenshot({path:`/tmp/agentlocker-react-${width}.png`,fullPage:false});
+
   await page.getByRole('button',{name:'Deny 2 selected',exact:true}).click();await page.getByRole('alertdialog').getByRole('button',{name:'Confirm decision'}).click();
   await ui(page.locator('#decision-result')).toContainText('denied');
   const rows=await f.db.prepare('SELECT status FROM actions WHERE id IN(?,?)').bind(pending.id,deletion.id).all<any>();expect(rows.results.map(r=>r.status)).toEqual(['denied','denied']);
@@ -258,23 +259,35 @@ describe.each([1280, 390])('React owner approvals at %ipx with real Worker, D1, 
  });
  it('polls at five seconds, backs off when idle, pauses when hidden, and shows stale data after failed refreshes',async()=>{
   await page.addInitScript(()=>{
-   const original=window.fetch;(window as any).pollTimes=[];
-   window.fetch=(...args)=>{if(String(args[0]).includes('/owner/overview?'))(window as any).pollTimes.push(Date.now());return original(...args);};
+   const original=window.fetch;(window as any).pollTimes=[];(window as any).overviewBusy=0;
+   window.fetch=async(...args)=>{
+    if(!String(args[0]).includes('/owner/overview?'))return original(...args);
+    (window as any).pollTimes.push(Date.now());(window as any).overviewBusy++;
+    try{return await original(...args);}finally{(window as any).overviewBusy--;}
+   };
   });
-  await page.clock.install();await loginReact();await ui(page.locator('#refresh-time')).toContainText('Last refreshed');await page.clock.pauseAt(new Date(Date.now()+100));
+  await page.clock.install();
+  const initial=page.waitForResponse(response=>response.url().includes('/owner/overview?'));
+  await loginReact();await ui(page.locator('#refresh-time')).toContainText('Last refreshed');
+  const snapshot=await(await initial).json();
   let calls=0,fail=false;
-  await page.route('**/owner/overview?**',async route=>{calls++;if(fail)await route.fulfill({status:503,json:{error:{message:'Service unavailable'},request_id:'test-refresh'}});else await route.continue();});
-  const advance=async(ms:number)=>{await page.clock.runFor(ms);await new Promise(r=>setTimeout(r,70));};
+  // Use a real initial overview, then isolate cadence from local D1 latency.
+  // Let the clock keep running so Query notifications can finish between steps.
+  await page.route('**/owner/overview?**',async route=>{calls++;if(fail)await route.fulfill({status:503,json:{error:{message:'Service unavailable'},request_id:'test-refresh'}});else await route.fulfill({json:snapshot});});
+  const settled=async()=>{await ui.poll(()=>page.evaluate(()=>(window as any).overviewBusy)).toBe(0);await ui(page.getByRole('button',{name:'Refresh now',exact:true})).toBeEnabled();};
+  const advance=async(ms:number)=>{await page.clock.runFor(ms);await settled();};
   await advance(5000);await ui.poll(()=>calls).toBeGreaterThanOrEqual(1);
   for(let i=0;i<20;i++)await advance(5000);
   const times:number[]=await page.evaluate(()=>(window as any).pollTimes);
   const intervals=times.slice(1).map((time,i)=>time-times[i]);
-  expect(intervals).toContain(5000);expect(intervals).toContain(15000);
+  // Allow rendering time while keeping the two polling cadences distinct.
+  expect(intervals.some(interval=>interval>=5000&&interval<6000)).toBe(true);
+  expect(intervals.some(interval=>interval>=15000&&interval<16000)).toBe(true);
   await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
   const hidden=calls;await advance(30000);expect(calls).toBe(hidden);
   await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
-  await ui.poll(()=>calls).toBe(hidden+1);fail=true;
-  await new Promise(r=>setTimeout(r,70));await advance(15000);await advance(15000);await advance(1000);await ui(page.locator('#stale')).toBeVisible();
+  await ui.poll(()=>calls).toBe(hidden+1);await settled();fail=true;
+  await advance(15000);await advance(15000);await advance(1000);await ui(page.locator('#stale')).toBeVisible();
   await signOutReact();await page.unroute('**/owner/overview?**');
  });
 

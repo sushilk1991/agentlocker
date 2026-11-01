@@ -36,10 +36,10 @@ export default function Agents() {
   {list.isPending && <Skeleton />}
   {list.error && <p role="alert" className="warning">{visibleText(list.error.message)} <Button variant="outline" onClick={() => void list.refetch()}>Reload agents</Button></p>}
   {list.data?.agents.length === 0 && <section className="panel empty"><span className="empty-icon"><Users size={30} /></span><h2>No agents yet</h2><p>Create an agent, add narrow grants, and issue a short task token.</p></section>}
-  {!!list.data?.agents.length && <section className="panel table-panel"><Table><TableHeader><TableRow><TableHead>Agent</TableHead><TableHead>Status</TableHead><TableHead>Task tokens</TableHead><TableHead>Access</TableHead></TableRow></TableHeader><TableBody>{list.data.agents.map(item => <TableRow key={item.id}>
+  {!!list.data?.agents.length && <section className="panel table-panel agents-table"><Table><TableHeader><TableRow><TableHead>Agent</TableHead><TableHead>Status</TableHead><TableHead>Task tokens</TableHead><TableHead>Access</TableHead></TableRow></TableHeader><TableBody>{list.data.agents.map(item => <TableRow key={item.id}>
    <TableCell><strong>{visibleText(item.name)}</strong><p>{visibleText(item.description || 'No description')}</p><small>Agent ID: {item.id}</small></TableCell>
-   <TableCell><Badge variant={item.status === 'enabled' ? 'default' : item.status === 'revoked' ? 'destructive' : 'secondary'}>{item.status}</Badge></TableCell>
-   <TableCell>{item.tokens.filter(token => !token.revoked_at && token.expires_at > Date.now()).length} active</TableCell>
+   <TableCell><span className="mobile-cell-label">Status</span><Badge variant={item.status === 'enabled' ? 'default' : item.status === 'revoked' ? 'destructive' : 'secondary'}>{item.status}</Badge></TableCell>
+   <TableCell><span className="mobile-cell-label">Task tokens</span>{item.tokens.filter(token => !token.revoked_at && token.expires_at > Date.now()).length} active</TableCell>
    <TableCell><Button variant="outline" onClick={() => setSelected(item.id)}>Manage {visibleText(item.name)}</Button></TableCell>
   </TableRow>)}</TableBody></Table></section>}
   {creating && <Dialog open onOpenChange={open => {if (!busy) setCreating(open);}}><DialogContent busy={busy}><DialogTitle>Create agent</DialogTitle><DialogDescription>Start with no access. Add grants and a task token, then review before enabling.</DialogDescription><form onSubmit={create}>
