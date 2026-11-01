@@ -2,7 +2,7 @@ import { assert, Env, LIMITS, LockerError } from './types';
 const encoder = new TextEncoder();
 export const bytes = (s: string) => encoder.encode(s);
 export function base64(data: Uint8Array): string { let s=''; for(let i=0;i<data.length;i+=8192) s+=String.fromCharCode(...data.subarray(i,i+8192)); return btoa(s); }
-export function unbase64(s: string): Uint8Array { try { assert(/^[A-Za-z0-9+/]*={0,2}$/.test(s),'invalid_base64'); return Uint8Array.from(atob(s),c=>c.charCodeAt(0)); } catch { throw new LockerError('invalid_base64'); } }
+export function unbase64(s: string): Uint8Array<ArrayBuffer> { try { assert(/^[A-Za-z0-9+/]*={0,2}$/.test(s),'invalid_base64'); return Uint8Array.from(atob(s),c=>c.charCodeAt(0)); } catch { throw new LockerError('invalid_base64'); } }
 export async function sha(data: string | Uint8Array) { const h=await crypto.subtle.digest('SHA-256',typeof data==='string'?bytes(data):data as Uint8Array<ArrayBuffer>); return Array.from(new Uint8Array(h),b=>b.toString(16).padStart(2,'0')).join(''); }
 export function canonical(value: unknown): string {
  if(Array.isArray(value)) return '['+value.map(canonical).join(',')+']';
@@ -17,7 +17,7 @@ export function path(input: string, folder=false): string {
  for(const segment of input.split('/').filter(Boolean)) assert(segment!=='.' && segment!=='..' && bytes(segment).length<=255,'invalid_path');
  return input;
 }
-export const matches = (prefix: string,target: string) => prefix==='/' || target.startsWith(prefix);
+export const matches = (prefix: string,target: string) => (prefix==='/' || prefix.startsWith('/')&&prefix.endsWith('/')) && target.startsWith(prefix);
 export function host(input: string): string {
  assert(typeof input==='string' && input.length<=253 && !/[\s/:@#?*%]/.test(input),'invalid_host');
  let h: string; try { h=new URL('https://'+input).hostname.toLowerCase(); } catch { throw new LockerError('invalid_host'); }

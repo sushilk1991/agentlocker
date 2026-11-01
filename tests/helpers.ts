@@ -1,0 +1,40 @@
+import { readFile, readdir } from 'node:fs/promises';
+import { Miniflare } from 'miniflare';
+import { unstable_splitSqlQuery } from 'wrangler';
+import type { Context, Env, Identity } from '../src/types';
+
+export async function applyMigration(db: D1Database, name: string) {
+ const sql = await readFile(`migrations/${name}`, 'utf8');
+ await db.batch(unstable_splitSqlQuery(sql).map(query => db.prepare(query)));
+}
+
+export async function database(migrate = true) {
+ const runtime = new Miniflare({
+  modules: true,
+  script: 'export default { fetch() { return new Response("test"); } };',
+  compatibilityDate: '2025-10-14',
+  d1Databases: ['DB'],
+ });
+ const db = await runtime.getD1Database('DB') as unknown as D1Database;
+ if (migrate) {
+  // Use the actual SQL files, including their constraints, indexes, and triggers.
+  for (const name of (await readdir('migrations')).filter(x => x.endsWith('.sql')).sort()) {
+   await applyMigration(db, name);
+  }
+ }
+ const env = {
+  DB: db, FILES: {} as R2Bucket, OWNER_TOKEN: 'owner-canary-' + 'a'.repeat(64),
+  LOCKER_ENCRYPTION_KEY: btoa('k'.repeat(32)), ENCRYPTION_KEY_VERSION: '1',
+  PUBLIC_ORIGIN: 'https://locker.example.com', DEPLOYMENT_ID: 'test-deployment-id',
+ } satisfies Env;
+ const context = (actor: Identity = {kind: 'owner', name: 'Owner'}): Context => ({
+  env, actor, requestId: crypto.randomUUID(), ctx: {} as ExecutionContext,
+ });
+ if (migrate) await db.prepare(`INSERT INTO settings(id,deployment_id,public_origin,setup_complete,created_at,updated_at)
+  VALUES(1,?,?,1,0,0)`).bind(env.DEPLOYMENT_ID, env.PUBLIC_ORIGIN).run();
+ return {runtime, db, env, context};
+}
+
+export function bearer(token: string, url = 'https://locker.example.com/api/v1/files', origin?: string) {
+ return new Request(url, {headers: {authorization: `Bearer ${token}`, ...(origin ? {origin} : {})}});
+}
