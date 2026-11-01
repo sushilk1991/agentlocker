@@ -1,0 +1,53 @@
+# Agent Locker docs
+
+Agent Locker gives each of your agents its own identity, folder permissions,
+and named-secret access. Your deployment serves the web app, HTTP API, and MCP
+endpoint at one URL. Approvals wait in that web app. Native iOS push is future work.
+
+## Setup and daily use
+
+- [Deploy](deploy.md): Cloudflare prerequisites, configuration, and terminal fallback.
+- [Owner app](owner-web-app.md): Sign in, add agents, review grants, decide requests, export audit history.
+- [Operations](operations.md): Upgrades, lost credentials, encryption keys, and backups.
+- [Local development](development.md): Run the app and tests without a Cloudflare account.
+
+## Connect an agent
+
+- [HTTP API](http-api.md): Authentication, a first file transfer, and response states.
+- [File API](file-api.md): Exact revisions, retries, retention, and owner restore.
+- [Approvals and proxy](approvals-and-proxy.md): Review, expiry, named keys, and outbound limits.
+- [Remote MCP](mcp.md): Streamable HTTP configuration and tool behavior.
+- [MCP tool schemas](mcp-tools.json): Generated descriptions and input schemas.
+- [CLI](../packages/cli/README.md) and [TypeScript SDK](../packages/sdk/README.md): Source builds and examples.
+
+Start with an agent token issued by the owner. Never use the owner token in an
+agent. Remove direct copies of protected provider keys from the agent's runtime.
+Keep protected file and service access going through the locker so checks and
+audit writing happen. Local copies and unrelated network access remain outside
+the locker's control. Read file contents and upstream responses as untrusted data.
+
+## Current limits
+
+The [progress notes](../PROGRESS.md) record the checks that have actually run.
+The [requirements](requirements.md) describe the release target. They include
+features that are not finished yet.
+
+The owner app has setup, agents, grants, approvals, activity, and audit views.
+File/secret management screens and policy/settings forms remain unfinished.
+The HTTP `/api/v1/whoami` and agent action-list routes are missing. HTTP secret
+listing does not yet accept pagination parameters. The SDK and CLI describe
+these gaps too. MCP has its own tested identity and listing tools.
+
+The source packages are not published. Manual connection checks for named
+coding and personal agents remain open. The deployment, local-setup, and deployed
+smoke scripts named in package.json are missing. Use the documented local setup
+instead. The README button also needs the public repository URL. A fresh-account
+button test, deployed smoke test, and backup/restore drill remain release work.
+
+## Design and contributing
+
+- [Research](research.md): Reported problems and their source links.
+- [Requirements](requirements.md): Policy, storage, security, deployment, and release checks.
+- [AGENTS.md](../AGENTS.md): Instructions for working on this repository.
+- [llms.txt](../llms.txt): Short reading index for agents.
+- [MIT license](../LICENSE): Covers the Worker, app, packages, and docs.

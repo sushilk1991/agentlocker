@@ -20,7 +20,7 @@ The audit view filters by time, agent, token, operation, file path or folder pre
 
 Audit metadata is kept indefinitely. The overview shows the latest event number and an estimated metadata size. The estimate samples the most recent 100 entries; it is not a Cloudflare billing figure or a full database size. Polling does not scan all retained audit rows. File usage includes retained and staged bytes.
 
-This chunk provides setup, agents, tokens, grants, approval review, activity, and audit views. File and secret management screens, policy/settings forms, and client connection checks remain separate chunks. Existing file and secret APIs still work.
+The app provides setup, agents, tokens, grants, approval review, activity, and audit views. File and secret management screens, policy/settings forms, and named-agent connection checks remain unfinished. Existing file and secret APIs still work. See the [documentation index](README.md) for the current gaps.
 
 ## Owner routes
 

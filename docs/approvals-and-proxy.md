@@ -2,9 +2,9 @@
 
 Every agent delete, file replacement, and outbound request waits for the owner.
 GET and HEAD requests also need approval. A grant alone does not authorize a send.
-There are no push services or approval links in v1. The owner web app is a later
-chunk. It will use the owner routes below at each deployment's own URL. A native
-iOS app with push is future work.
+There are no push services or approval links in v1. The [owner web app](owner-web-app.md)
+uses the owner routes below at each deployment's own URL. A native iOS app with
+push is future work.
 
 ## State and decisions
 
@@ -89,8 +89,9 @@ outstanding work conservatively through the deployment policy version.
 Provider key rotation means saving a replacement value here. Storage key rotation
 is a separate maintenance task. Records carry an explicit encryption-key version;
 the configured previous key can decrypt records with that version. There is no
-silent key fallback. A bounded storage re-encryption workflow is future work in
-the deployment/maintenance chunk. Keep offline encryption-key backups.
+silent key fallback. A bounded storage re-encryption workflow is not implemented.
+Keep offline encryption-key backups. See [operations](operations.md) before changing
+storage keys or deployment identity.
 
 Agents POST `/api/v1/proxy/requests` with an `Idempotency-Key` header:
 

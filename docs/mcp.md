@@ -43,8 +43,8 @@ try {
 
 Other clients must support bearer headers for remote Streamable HTTP. There is
 no MCP OAuth flow, client registration, or shared OAuth login in v1. Use the plain
-HTTP API if your client cannot set these headers. CLI support is a later chunk.
-No named coding or personal agent client has been manually verified in this chunk.
+HTTP API or the [CLI](../packages/cli/README.md) if your client cannot set these
+headers. No named coding or personal agent client has been manually verified yet.
 
 ## Tools
 

@@ -1,11 +1,51 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "agentlocker", "main": "src/index.ts",
-  "compatibility_date": "2025-10-14", "compatibility_flags": ["nodejs_compat"], "workers_dev": true,
-  "d1_databases": [{"binding": "DB", "database_name": "agentlocker", "database_id": "", "migrations_dir": "migrations"}],
-  "r2_buckets": [{"binding": "FILES", "bucket_name": "agentlocker-files"}],
-  "rules": [{"type":"Text","globs":["**/public/*.html","**/public/*.css","**/public/*.js"],"fallthrough":false}],
-  "triggers": {"crons": ["* * * * *"]},
-  "vars": {"PUBLIC_ORIGIN": "", "DEPLOYMENT_ID": "", "ENCRYPTION_KEY_VERSION": "1"},
-  "observability": {"enabled": false}
+  "name": "agentlocker",
+  "main": "src/index.ts",
+  // Pinned to the runtime used by the local integration and MCP tests.
+  "compatibility_date": "2025-10-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+
+  // Template names only. Provisioning fills the owner's resource names and ID.
+  // Merely setting migrations_dir does not apply SQL: see docs/deploy.md.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "agentlocker",
+      // Placeholder UUID for local migrations. Provisioning must replace it.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+      "remote": false
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "agentlocker-files",
+      "remote": false
+    }
+  ],
+
+  // The Worker imports these small assets as text. No assets binding is needed.
+  "rules": [
+    {
+      "type": "Text",
+      "globs": ["**/public/*.html", "**/public/*.css", "**/public/*.js"],
+      "fallthrough": false
+    }
+  ],
+  // Expiry/dispatch each minute; bounded file cleanup at most hourly.
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": {
+    // Closed until explicitly configured. Never infer these from a request.
+    "PUBLIC_ORIGIN": "",
+    // Generate once and preserve through upgrades and recovery.
+    "DEPLOYMENT_ID": "",
+    "ENCRYPTION_KEY_VERSION": "1"
+  },
+  // OWNER_TOKEN and LOCKER_ENCRYPTION_KEY belong in Worker secrets, never vars.
+  // Keep request payloads and credentials out of platform logs.
+  "observability": { "enabled": false }
 }

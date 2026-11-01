@@ -1,6 +1,6 @@
 # Agent Locker requirements
 
-Status: phase 1 specification. No implementation is included in this phase.
+Status: v1 release specification. See [PROGRESS.md](../PROGRESS.md) for the current implementation and checks.
 
 Agent Locker is an MIT-licensed, self-hosted place for one person's agents to use files and secrets through a controlled API. Each deployment belongs to one owner and has its own URL. The first release uses one Cloudflare Worker, D1, and R2.
 

@@ -1,8 +1,9 @@
 # File API
 
-This chunk adds file storage and HTTP routes. The owner approval screen and
-scheduled action dispatch come in the approvals chunk. Until then, agent delete,
-replacement, and rule-gated requests stay pending. There is no approval shortcut.
+File storage uses private R2 bytes and revision metadata in D1. Agent deletes,
+replacements, and rule-gated requests wait for review in the owner web app.
+Approval starts execution, with scheduled dispatch as a fallback. See
+[approvals and proxy](approvals-and-proxy.md) for decisions and action states.
 
 All protected routes use a bearer token. Agent routes start with `/api/v1`.
 Owner routes start with `/api/v1/owner`. Each deployment has its own origin.
@@ -38,7 +39,8 @@ A successful write returns an action with `status: "succeeded"` and
 Poll `GET /api/v1/actions/<id>` to read its state. Polling never executes it.
 Owner rules can also make list, metadata, read, and new-write requests pending.
 Include an idempotency key on those reads. Pending reads return an action instead
-of file data. Approval decisions and their execution belong to the next chunk.
+of file data. After approval and successful execution, fetch the retained result
+from `/api/v1/actions/<id>/result`.
 
 Owner replacement uploads also need `X-Confirm-Content-SHA256` with the uploaded
 bytes' SHA-256 hash. Owner deletes need `X-Confirm-Revision` matching `If-Match`.
@@ -87,5 +89,5 @@ remain charged for at least 24 hours. Failed R2 deletion keeps the reservation
 charged until cleanup succeeds. Maintenance mode stops cleanup.
 
 Retention does not protect against loss of the Cloudflare account, D1, or R2.
-Separate backup and export instructions belong to the deployment chunk. Native
-iOS approval notifications are future work. V1 has no push or ntfy integration.
+See [operations](operations.md) for backup requirements and current tooling gaps.
+Native iOS approval notifications are future work. V1 has no push or ntfy integration.
