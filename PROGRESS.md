@@ -149,3 +149,8 @@
 ## Runner change (01 Nov 2026, 04:30 IST)
 - Requirements doc complete (sections 12 deploy, 13 testing, 14 success criteria).
 - Build now runs in 8 small chunks via /workspace/alrun/run.sh (resumable, 45m timeout, stall watchdog, local git commit after each chunk). Status: /workspace/alrun/runner.log.
+
+## Ship
+- 01 Nov 19:30 IST: ship started; running local QA.
+- 01 Nov ~19:45 IST: local QA passed: npm ci (9 dependency advisories: 1 moderate, 6 high, 2 critical), typecheck clean, npm test 323/323 across 20/20 files, test:mcp 4/4 groups, build dry-run OK.
+- Deploy BLOCKED: the Cloudflare connector (sushilk.1991@gmail.com, account 75f97e9b…) can read but not create resources. Creating the R2 bucket returned 403 needing `workers-r2.write`; creating D1 failed on a permission the connection cannot request. Nothing was created on Cloudflare. No secrets generated, no smoke run, no GitHub repo created or pushed.
