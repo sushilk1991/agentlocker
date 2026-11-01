@@ -8,6 +8,7 @@ import { assert, Context, LIMITS, LockerError, NOW, one, opaqueId, Row, settings
 export const DAY = 86400000;
 interface FileInput {
  operation: 'file.write' | 'file.delete' | 'file.restore'; path: string;
+ file_id?: string;
  expected_revision: string | null; revision?: string; source_revision?: string;
  hash?: string; length?: number; media_type?: string; previous_hash?: string; previous_length?: number;
 }
@@ -90,7 +91,7 @@ async function submit(c: Context, base: FileInput, key: string, data?: Uint8Arra
  if (base.operation !== 'file.restore') assert(!f?.deleted_at, 'not_found_or_not_allowed', 404);
  if (base.operation === 'file.delete') assert(f?.current_revision_id, 'not_found_or_not_allowed', 404);
  const id = opaqueId(), revision = data ? opaqueId() : undefined;
- const input: FileInput = {...base, ...(revision ? {revision} : {}), previous_hash: f?.hash, previous_length: f?.length};
+ const input: FileInput = {...base, ...(f ? {file_id:f.id} : {}), ...(revision ? {revision} : {}), previous_hash: f?.hash, previous_length: f?.length};
  const digest = await sha(canonical({input, config_version: s.config_version, agent_id: c.actor.agentId ?? null, token_id: c.actor.tokenId ?? null}));
  const encrypted = await seal(c.env, 'action.input', id, 1, canonical(input));
  const gated = c.actor.kind !== 'owner' && (base.operation === 'file.delete' || base.expected_revision !== null || await requiresReview(c, base.operation, base.path));
@@ -141,11 +142,11 @@ async function submit(c: Context, base: FileInput, key: string, data?: Uint8Arra
 
 // Called by immediate safe writes and, in the approval chunk, the durable
 // executor. There is deliberately no agent HTTP endpoint that sets ready.
-export async function executeFileAction(c: Context, id: string) {
+export async function executeFileAction(c: Context, id: string, claimId?: string) {
  const a = await one(c, 'SELECT * FROM actions WHERE id=?', id);
  assert(a && ['file.write','file.delete','file.restore'].includes(a.operation), 'not_found_or_not_allowed', 404);
  assert(c.actor.kind === 'owner' || a.agent_id === c.actor.agentId, 'not_found_or_not_allowed', 404);
- if (a.status !== 'ready') return summary(a);
+ if (a.status !== (claimId ? 'executing' : 'ready') || (claimId && a.claim_id !== claimId)) return summary(a);
  const input: FileInput = JSON.parse(await open(c.env, 'action.input', id, 1, a.input_cipher, a.input_nonce, a.key_version));
  const digest = await sha(canonical({input, config_version: a.config_version, agent_id: a.agent_id, token_id: a.token_id}));
  assert(digest === a.digest && input.path === a.target && input.operation === a.operation && input.expected_revision === a.target_revision, 'action_integrity_error', 503);
@@ -164,7 +165,7 @@ export async function executeFileAction(c: Context, id: string) {
   {path: input.path, revision: input.revision, hash: input.hash, length: input.length};
  const statements = [
   statement(c, `UPDATE actions AS a SET status='succeeded',result_revision=?,result_metadata=?,updated_at=${NOW},result_expires_at=${NOW}+?
-   WHERE id=? AND status='ready' AND expires_at>${NOW}
+   WHERE id=? AND ${claimId ? "status='executing' AND claim_id=?" : `status='ready' AND expires_at>${NOW}`}
    AND EXISTS(SELECT 1 FROM settings s WHERE s.id=1 AND s.config_version=a.config_version AND s.maintenance=0 AND s.setup_complete=1)
    AND (a.approval_id IS NULL OR EXISTS(SELECT 1 FROM approvals p WHERE p.id=a.approval_id AND p.action_id=a.id AND p.state='approved'))
    AND (a.agent_id IS NULL OR EXISTS(SELECT 1 FROM agent_tokens t JOIN agents g ON g.id=t.agent_id
@@ -174,13 +175,14 @@ export async function executeFileAction(c: Context, id: string) {
    AND EXISTS(SELECT 1 FROM files f WHERE f.path=a.target AND f.current_revision_id IS a.target_revision ${input.operation === 'file.restore' ? '' : 'AND f.deleted_at IS NULL'})
    ${input.source_revision ? `AND EXISTS(SELECT 1 FROM file_revisions r WHERE r.id=? AND r.uploaded=1 AND r.published_at IS NOT NULL AND (r.retain_until IS NULL OR r.retain_until>${NOW}))` : ''}
    ${input.revision ? 'AND EXISTS(SELECT 1 FROM file_revisions r WHERE r.id=? AND r.action_id=a.id AND r.uploaded=1)' : ''}`,
-  input.revision ?? input.expected_revision, JSON.stringify(result), DAY, id,
+  input.revision ?? input.expected_revision, JSON.stringify(result), DAY, id, ...(claimId ? [claimId] : []),
   ...(input.source_revision ? [input.source_revision] : []), ...(input.revision ? [input.revision] : [])),
   ...changedOne(c),
   statement(c, `UPDATE files SET current_revision_id=?,deleted_at=${input.operation === 'file.delete' ? NOW : 'NULL'},modified_at=${NOW} WHERE path=?`,
    input.revision ?? input.expected_revision, input.path),
   statement(c, `UPDATE file_revisions SET retain_until=MAX(COALESCE(retain_until,0),${NOW}+(SELECT retention_ms FROM settings WHERE id=1)) WHERE id=?`, input.expected_revision),
   ...(input.revision ? [statement(c, `UPDATE file_revisions SET retain_until=NULL,published_at=${NOW} WHERE id=?`, input.revision)] : []),
+  ...(claimId ? [statement(c, `UPDATE execution_attempts SET state='succeeded',completed_at=${NOW} WHERE id=? AND action_id=? AND state='claimed'`, claimId, id)] : []),
   auditStatement(execution, input.operation, input.path, 'allow', input.operation === 'file.delete' ? 'deleted' : input.operation === 'file.restore' ? 'restored' : 'written', {
    actionId: id, approvalId: a.approval_id ?? undefined, metadata: {revision: input.revision ?? input.expected_revision!,
     ...(input.hash ? {hash: input.hash, length: input.length!} : {hash: input.previous_hash!, length: input.previous_length!}),

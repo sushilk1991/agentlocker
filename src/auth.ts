@@ -59,6 +59,6 @@ export function requireOwner(c: Context) {assert(c.actor.kind==='owner','forbidd
 export async function checkSchema(c: Context) {
  let version: Row|null;
  try {version=await one(c,'SELECT version FROM schema_version');} catch {assert(false,'schema_unavailable',503);}
- assert(version?.version===3,'schema_unavailable',503);
+ assert(version?.version===4,'schema_unavailable',503);
 }
 export async function ready(c: Context) {await checkSchema(c);const s=await settings(c);assert(s.setup_complete,'setup_required',503);assert(!s.maintenance,'maintenance',503);return s;}

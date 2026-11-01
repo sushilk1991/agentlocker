@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { authenticate } from '../src/auth';
+import { decideApproval, reviewApproval } from '../src/approvals';
 import { createAgent, issueToken, replaceGrants, revokeToken, setAgentStatus } from '../src/agents';
 import { executeFileAction, fileAction, submitDelete, submitWrite } from '../src/file-actions';
 import { readFile, listFiles } from '../src/files';
@@ -15,12 +16,10 @@ async function agent(prefix = '/agents/', permissions = {read: true, write: true
  await setAgentStatus(owner, a.id, 'enabled');
  return {a, t, c: f.context(await authenticate(owner, bearer(t.token), false))};
 }
-// Only the test harness decides approvals in this chunk. No agent route can do it.
 async function approve(id: string) {
- await f.db.batch([
-  f.db.prepare("UPDATE approvals SET state='approved',decided_at=0 WHERE action_id=?").bind(id),
-  f.db.prepare("UPDATE actions SET status='ready' WHERE id=? AND status='pending'").bind(id),
- ]);
+ const a = await f.db.prepare('SELECT approval_id FROM actions WHERE id=?').bind(id).first<any>();
+ const review = await reviewApproval(f.context(), a.approval_id);
+ await decideApproval(f.context(), a.approval_id, review.digest, 'approve');
 }
 
 describe('file submissions and exact revision execution with real D1/R2', () => {

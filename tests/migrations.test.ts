@@ -42,7 +42,7 @@ describe('core D1 migrations', () => {
  it('fails closed for unsupported schema, incomplete setup, and maintenance', async () => {
   await f.db.prepare('UPDATE schema_version SET version=999').run();
   await expect(ready(f.context())).rejects.toMatchObject({code: 'schema_unavailable', status: 503});
-  await f.db.prepare('UPDATE schema_version SET version=3').run();
+  await f.db.prepare('UPDATE schema_version SET version=4').run();
   await f.db.prepare('UPDATE settings SET setup_complete=0 WHERE id=1').run();
   await expect(ready(f.context())).rejects.toHaveProperty('code', 'setup_required');
   await f.db.prepare('UPDATE settings SET setup_complete=1,maintenance=1 WHERE id=1').run();
@@ -70,7 +70,7 @@ describe('upgrade from the existing initial migration', () => {
    VALUES(42,'old-request','owner','Owner','agent.revoke','old-agent','allow','revoked','revoked')`).run();
   await expect(checkSchema(f.context())).rejects.toHaveProperty('code', 'schema_unavailable');
   await applyMigration(f.db, '0002_core_guards.sql');
-  await applyMigration(f.db, '0003_file_storage.sql');
+  await applyMigration(f.db, '0003_file_storage.sql'); await applyMigration(f.db, '0004_approvals.sql');
   await expect(checkSchema(f.context())).resolves.toBeUndefined();
   expect(await f.db.prepare('SELECT token_hash,revoked_at FROM agent_tokens').first()).toEqual({token_hash: 'b'.repeat(64), revoked_at: 500});
   expect(await f.db.prepare('SELECT prefix FROM folder_grants').first('prefix')).toBe('/old/');
@@ -89,7 +89,7 @@ describe('file storage schema upgrade', () => {
   for (const id of ['current','historical']) await f.db.prepare(`INSERT INTO file_revisions(id,file_id,object_key,hash,length,media_type,author_kind,uploaded,created_at,retain_until)
    VALUES(?,'old-file',?,'original-hash',7,'text/plain','owner',1,0,9999999999999)`).bind(id, `files/old/${id}`).run();
   await expect(checkSchema(f.context())).rejects.toHaveProperty('code', 'schema_unavailable');
-  await applyMigration(f.db, '0003_file_storage.sql');
+  await applyMigration(f.db, '0003_file_storage.sql'); await applyMigration(f.db, '0004_approvals.sql');
   await expect(checkSchema(f.context())).resolves.toBeUndefined();
   const {results} = await f.db.prepare('SELECT hash,length,published_at FROM file_revisions ORDER BY id').all();
   expect(results).toEqual([{hash: 'original-hash', length: 7, published_at: 0}, {hash: 'original-hash', length: 7, published_at: 0}]);

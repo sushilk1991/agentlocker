@@ -22,7 +22,7 @@ export function host(input: string): string {
  assert(typeof input==='string' && input.length<=253 && !/[\s/:@#?*%]/.test(input),'invalid_host');
  let h: string; try { h=new URL('https://'+input).hostname.toLowerCase(); } catch { throw new LockerError('invalid_host'); }
  assert(h.includes('.') && /^[a-z0-9.-]+$/.test(h) && !h.endsWith('.') && !/^\d+(\.\d+)*$/.test(h),'invalid_host');
- assert(!/(^|\.)(localhost|local|internal|lan|home|test|invalid|onion)$/.test(h),'invalid_host');
+ assert(!/(^|\.)(localhost|local|internal|intranet|lan|home|home\.arpa|test|invalid|onion)$/.test(h),'invalid_host');
  assert(h.split('.').every(x=>x.length>0 && x.length<=63 && !x.startsWith('-')&&!x.endsWith('-')),'invalid_host');
  return h;
 }
@@ -32,15 +32,19 @@ export function injection(header: string,scheme: string) {
  assert(scheme==='bearer'?header.toLowerCase()==='authorization': /^[a-zA-Z0-9!#$%&'*+.^_`|~-]+$/.test(header)&&!forbidden.test(header)&&!/^content-/i.test(header),'invalid_injection');
  return header.toLowerCase();
 }
-export function secretValue(value: string) { assert(typeof value==='string' && value.length>0 && bytes(value).length<=LIMITS.secret && /^[\x20-\x7e]+$/.test(value),'invalid_secret'); return value; }
+export function secretValue(value: string) { assert(typeof value==='string' && value.length>0 && value.trim()===value && bytes(value).length<=LIMITS.secret && /^[\x20-\x7e]+$/.test(value),'invalid_secret'); return value; }
 export function proxyInput(input: any, secret: any, hosts: string[], origin: string) {
+ assert(input && typeof input==='object' && !Array.isArray(input) && Object.keys(input).every(k=>['secret','url','method','headers','body_text','body_base64'].includes(k)), 'invalid_proxy_request');
+ assert(typeof input.url==='string' && input.url.length<=8192 && !/[\p{Cc}#]/u.test(input.url) && !/^https:\/\/[^/]*@/i.test(input.url),'invalid_url');
+ assert(input.headers===undefined || input.headers!==null && typeof input.headers==='object' && !Array.isArray(input.headers),'invalid_header');
+ assert((input.body_text===undefined || typeof input.body_text==='string') && (input.body_base64===undefined || typeof input.body_base64==='string'),'invalid_body');
  let url: URL; try {url=new URL(input.url);} catch {throw new LockerError('invalid_url');}
  assert(url.protocol==='https:' && !url.username&&!url.password&&!url.hash && (!url.port||url.port==='443'),'invalid_url');
  const h=host(url.hostname); assert(hosts.includes(h)&&url.origin!==origin,'not_found_or_not_allowed',404);
  const method=input.method; assert(['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'].includes(method),'invalid_method');
- const headers: Record<string,string>={}; let size=0;
+ const headers: Record<string,string>=Object.create(null); let size=0;
  for(const [k,v] of Object.entries(input.headers||{})) {
-  assert(typeof v==='string' && /^[a-zA-Z0-9!#$%&'*+.^_`|~-]+$/.test(k) && !forbidden.test(k) && k.toLowerCase()!==secret.injection_header && !/[\r\n\0]/.test(v),'invalid_header');
+  assert(typeof v==='string' && /^[a-zA-Z0-9!#$%&'*+.^_`|~-]+$/.test(k) && !forbidden.test(k) && k.toLowerCase()!==secret.injection_header && /^[\t\x20-\x7e\x80-\xff]*$/.test(v) && !/^[ \t]|[ \t]$/.test(v),'invalid_header');
   assert(!Object.hasOwn(headers,k.toLowerCase()),'duplicate_header'); headers[k.toLowerCase()]=v; size+=bytes(k+': '+v+'\r\n').length;
  }
  assert(size<=LIMITS.headers,'too_large',413);
@@ -79,10 +83,26 @@ export async function bounded(stream: ReadableStream<Uint8Array>|null,limit: num
  finally{reader.releaseLock();} const result=new Uint8Array(length);let offset=0;for(const chunk of chunks){result.set(chunk,offset);offset+=chunk.length;}return result;
 }
 export function redact(data: Uint8Array,secret: string): Uint8Array {
- const needle=bytes(secret), replacement=bytes('[REDACTED]'), out:number[]=[];
- for(let i=0;i<data.length;){if(data[i]===needle[0]&&needle.every((b,j)=>data[i+j]===b)){out.push(...replacement);i+=needle.length;}else out.push(data[i++]);}return new Uint8Array(out);
+ const needle=bytes(secret); assert(needle.length,'invalid_secret');
+ const replacement=bytes('[REDACTED]'.includes(secret)?'':'[REDACTED]');
+ // Prefix matching stays linear for long, repetitive keys. Remember the match
+ // state for each output byte so removing a match also handles new boundaries.
+ const prefix=new Uint32Array(needle.length);
+ for(let i=1,j=0;i<needle.length;i++) {
+  while(j&&needle[i]!==needle[j])j=prefix[j-1];
+  if(needle[i]===needle[j])j++;prefix[i]=j;
+ }
+ const out:number[]=[],states:number[]=[];let matched=0;
+ const append=(b:number)=>{
+  while(matched&&b!==needle[matched])matched=prefix[matched-1];
+  if(b===needle[matched])matched++;out.push(b);states.push(matched);
+  if(matched!==needle.length)return false;
+  out.length-=needle.length;states.length-=needle.length;matched=states.at(-1)??0;return true;
+ };
+ for(const b of data)if(append(b))for(const r of replacement)append(r);
+ return new Uint8Array(out);
 }
 export function safeResponseHeaders(headers: Headers,secret: string) {
- const out:Record<string,string>={};for(const [k,v] of headers) if(!forbidden.test(k)&&k!=='set-cookie'&&k!=='www-authenticate')out[k]=v.split(secret).join('[REDACTED]');return out;
+ const out:Record<string,string>={};for(const [k,v] of headers) if(!forbidden.test(k)&&!k.includes(secret.toLowerCase())&&!['set-cookie','www-authenticate','authentication-info'].includes(k))out[k]=new TextDecoder().decode(redact(bytes(v),secret));return out;
 }
 export const csvCell = (v: unknown) => '"'+String(v??'').replace(/^[=+@\-\t\r]/,"'$&").replaceAll('"','""')+'"';

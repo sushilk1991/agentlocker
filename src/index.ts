@@ -1,6 +1,9 @@
 import { authenticate, rate, ready, requireOwner } from './auth';
 import { audit } from './audit';
-import { submitWrite, submitDelete, submitRestore, fileAction } from './file-actions';
+import { submitWrite, submitDelete, submitRestore, idempotencyKey } from './file-actions';
+import { actionResult, approvalContent, batchDecision, decideApproval, executeAction, getAction, listApprovals, reviewApproval, sweepActions } from './approvals';
+import { submitProxy } from './proxy';
+import { disableSecret, gateSecretList, listSecrets, saveSecret } from './secrets';
 import { cleanupFiles } from './file-cleanup';
 import { gateFileRead } from './file-read-actions';
 import { download, fileMetadata, listFiles, pageLimit, readFile, retainedContent, revisions, visibleFile } from './files';
@@ -21,6 +24,17 @@ function actionResponse(c: Context, action: {status: string}) {
  if (action.status !== 'succeeded') response.headers.set('retry-after', '2');
  return response;
 }
+async function bodyJson(request: Request,allowed?: string[]) {
+ assert(request.headers.get('content-type')?.split(';')[0]==='application/json','invalid_content_type');
+ let value;
+ try {value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await bounded(request.body,128*1024)));}
+ catch(error) {if(error instanceof LockerError)throw error;throw new LockerError('invalid_json');}
+ assert(value&&typeof value==='object'&&!Array.isArray(value)&&(!allowed||Object.keys(value).every(k=>allowed.includes(k))),'invalid_input');
+ return value;
+}
+function dispatch(c: Context,id: string) {
+ c.ctx.waitUntil(executeAction({...c,actor:{kind:'owner',name:'System'}},id).catch(()=>{}));
+}
 
 export async function handleRequest(request: Request, env: Env, ctx: ExecutionContext) {
  const c: Context = {env, ctx, actor: {kind: 'anonymous', name: 'Anonymous'}, requestId: opaqueId()};
@@ -40,7 +54,44 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
    if (request.method !== 'GET') await rate(c, `agent:${c.actor.agentId}`, 'mutation', 20);
   }
   const route = owner ? url.pathname.replace('/api/v1/owner', '') : url.pathname.replace('/api/v1', '');
-  if (route === '/files' && request.method === 'GET') {
+  if (route === '/proxy/requests' && request.method === 'POST' && !owner) {
+   query(url,[]); operation='proxy.request';
+   response=actionResponse(c,await submitProxy(c,await bodyJson(request),request.headers.get('idempotency-key')!));
+  } else if(route==='/secrets' && request.method==='GET') {
+   query(url,[]); operation='secrets.list';
+   const gated=await gateSecretList(c,request.headers.get('idempotency-key'));
+   response=gated?actionResponse(c,gated):json({request_id:c.requestId,...await listSecrets(c)});
+  } else if(owner && route==='/secrets' && request.method==='POST') {
+   query(url,[]); operation='secret.save'; idempotencyKey(request.headers.get('idempotency-key')!);
+   response=json({request_id:c.requestId,...await saveSecret(c,await bodyJson(request) as any)},201);
+  } else if(owner && /^\/secrets\/[^/]+$/.test(route) && request.method==='PUT') {
+   query(url,[]); operation='secret.save'; idempotencyKey(request.headers.get('idempotency-key')!);
+   const {expected_version,...input}=await bodyJson(request);
+   response=json({request_id:c.requestId,...await saveSecret(c,input as any,route.split('/')[2],expected_version)});
+  } else if(owner && /^\/secrets\/[^/]+\/disable$/.test(route) && request.method==='POST') {
+   query(url,[]); operation='secret.disable'; idempotencyKey(request.headers.get('idempotency-key')!);
+   const input=await bodyJson(request,['expected_version']);
+   response=json({request_id:c.requestId,...await disableSecret(c,route.split('/')[2],input.expected_version)});
+  } else if(owner && route==='/approvals' && request.method==='GET') {
+   query(url,['state','limit','offset']); operation='approvals.list';
+   response=json({request_id:c.requestId,...await listApprovals(c,url.searchParams.get('state')??'pending',Number(url.searchParams.get('limit')??50),Number(url.searchParams.get('offset')??0))});
+  } else if(owner && route==='/approvals/batch-decision' && request.method==='POST') {
+   query(url,[]); operation='approval.decision'; idempotencyKey(request.headers.get('idempotency-key')!);
+   const input=await bodyJson(request,['members','decision','reason']);
+   const result=await batchDecision(c,input.members,input.decision,input.reason);
+   for(const a of result.results)if('status' in a && a.status==='ready')dispatch(c,a.id);
+   response=json({request_id:c.requestId,...result});
+  } else if(owner && /^\/approvals\/[^/]+\/decision$/.test(route) && request.method==='POST') {
+   query(url,[]); operation='approval.decision'; idempotencyKey(request.headers.get('idempotency-key')!);
+   const input=await bodyJson(request,['digest','decision','reason']);
+   const result=await decideApproval(c,route.split('/')[2],input.digest,input.decision,input.reason);
+   if(result.status==='ready')dispatch(c,result.id);
+   response=json({request_id:c.requestId,...result});
+  } else if(owner && /^\/approvals\/[^/]+\/content$/.test(route) && request.method==='GET') {
+   query(url,[]); operation='approval.content'; response=await approvalContent(c,route.split('/')[2]);
+  } else if(owner && /^\/approvals\/[^/]+$/.test(route) && request.method==='GET') {
+   query(url,[]); operation='approval.review'; response=json({request_id:c.requestId,...await reviewApproval(c,route.split('/')[2])});
+  } else if (route === '/files' && request.method === 'GET') {
    query(url, ['prefix','cursor','limit']);
    target = path(url.searchParams.get('prefix') ?? '/', true); operation = 'files.list';
    const limit = Number(url.searchParams.get('limit') ?? 50); pageLimit(limit);
@@ -85,9 +136,11 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
    assert(input && typeof input === 'object' && !Array.isArray(input) && Object.keys(input).every(k => ['source_revision','expected_revision'].includes(k)) &&
     typeof input.source_revision === 'string' && (input.expected_revision === null || typeof input.expected_revision === 'string'), 'invalid_restore');
    response = actionResponse(c, await submitRestore(c, input.source_revision, input.expected_revision, request.headers.get('idempotency-key')!));
+  } else if (/^\/actions\/[^/]+\/result$/.test(route) && request.method==='GET') {
+   query(url,[]); operation='action.result.read'; response=await actionResult(c,route.split('/')[2]);
   } else if (/^\/actions\/[^/]+$/.test(route) && request.method === 'GET') {
    query(url, []); operation = 'action.get';
-   response = json({request_id: c.requestId, ...await fileAction(c, route.split('/')[2])});
+   response = json({request_id: c.requestId, ...await getAction(c, route.split('/')[2])});
   } else throw new LockerError('not_found', 404);
  } catch (error) {
   let failure = error instanceof LockerError ? error : new LockerError('storage_unavailable', 503);
@@ -98,6 +151,8 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
  }
  response.headers.set('cache-control', 'no-store');
  response.headers.set('x-content-type-options', 'nosniff');
+ response.headers.set('referrer-policy','no-referrer');
+ response.headers.set('content-security-policy',"default-src 'none'; frame-ancestors 'none'");
  response.headers.set('x-request-id', c.requestId);
  return response;
 }
@@ -105,10 +160,8 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
 export default {
  fetch: handleRequest,
  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-  // File cleanup runs hourly, with a bounded batch. Other scheduled work belongs
-  // to the later approvals chunk.
-  if (new Date(controller.scheduledTime).getUTCMinutes() !== 0) return;
   const c: Context = {env, ctx, actor: {kind: 'owner', name: 'System'}, requestId: opaqueId()};
-  validateConfig(env); await ready(c); await cleanupFiles(c);
+  validateConfig(env); await ready(c); await sweepActions(c);
+  if (new Date(controller.scheduledTime).getUTCMinutes() === 0) await cleanupFiles(c);
  },
 };
