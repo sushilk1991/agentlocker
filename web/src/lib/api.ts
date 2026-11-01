@@ -29,6 +29,13 @@ export interface DecisionResult {
 }
 export type Member = {id: string; digest: string};
 
+export class ApiError extends Error {
+ readonly name = 'ApiError';
+ constructor(readonly status: number, message: string, readonly code?: string, readonly requestId?: string) {
+  super(message + (requestId ? ' · Request ' + requestId : ''));
+ }
+}
+
 // One client per sign-in. Credentials, retry keys and request lifetimes never
 // enter browser storage or Query keys. Failed mutations retain their exact key.
 export class OwnerApi {
@@ -53,9 +60,10 @@ export class OwnerApi {
   });
   this.controller.signal.throwIfAborted();
   if (!response.ok) {
-   const data = await response.json() as {error?: {message?: string}; request_id?: string};
+   const data = await response.json().catch(() => null) as {error?: {message?: string; code?: string}; request_id?: string} | null;
+   this.controller.signal.throwIfAborted();
    if (response.status === 401) this.unauthorized();
-   throw new Error((data.error?.message || 'Request failed') + (data.request_id ? ' · Request ' + data.request_id : ''));
+   throw new ApiError(response.status, data?.error?.message || `Request failed (${response.status})`, data?.error?.code, data?.request_id);
   }
   const result = raw ? response : await response.json();
   this.controller.signal.throwIfAborted();

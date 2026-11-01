@@ -9,6 +9,8 @@ All original management screens remain available during this staged redesign.
 The theme follows your system by default. Its light or dark preference is saved
 in browser storage. Tokens, review data, and secret values are not saved there.
 Signing out aborts requests and clears the private query cache and review data.
+If a screen cannot load, the app clears that session and offers a reload. Sign
+in again and check the queue before repeating a request.
 
 
 Open your deployment URL. Sign in with the owner token set as a Worker secret. The page keeps it in memory. Reloading or signing out clears it. The app does not use cookies or browser storage for credentials. Never use this token in an agent config.

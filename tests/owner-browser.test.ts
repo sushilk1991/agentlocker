@@ -263,16 +263,45 @@ describe.each([1280, 390])('React owner approvals at %ipx with real Worker, D1, 
   await ui(page.getByText('All clear for now')).toBeVisible();
   expect(await page.evaluate(()=>({local:Object.keys(localStorage),session:Object.keys(sessionStorage),cookies:document.cookie}))).toEqual({local:[],session:[],cookies:''});
   expect(await page.locator('body').innerText()).not.toContain(f.env.OWNER_TOKEN);expect(page.url()).not.toContain(f.env.OWNER_TOKEN);
-  if(width===390)await page.getByRole('button',{name:'Open navigation'}).click();
+  if(width===390) {
+   const menu=page.getByRole('button',{name:'Open navigation'});
+   await menu.click();await ui(page.getByRole('dialog',{name:'Workspace navigation'})).toBeVisible();
+   await page.keyboard.press('Escape');await ui(menu).toBeFocused();await menu.click();
+  }
   await page.getByRole('button',{name:'Theme: system. Switch to light'}).click();
+  await page.screenshot({path:`/tmp/agentlocker-foundation-light-${width}.png`,fullPage:true});
   await page.getByRole('button',{name:'Theme: light. Switch to dark'}).click();
   expect(await page.evaluate(()=>document.documentElement.classList.contains('dark'))).toBe(true);
   await page.getByRole('link',{name:'Files',exact:true}).click();await ui(page.getByRole('heading',{name:'This screen is in the existing app'})).toBeVisible();
   if(width===390)await page.getByRole('button',{name:'Open navigation'}).click();
   await page.getByRole('link',{name:'Approvals',exact:false}).click();await ui(page.getByRole('heading',{name:'Review requests'})).toBeVisible();
+  await page.screenshot({path:`/tmp/agentlocker-foundation-dark-${width}.png`,fullPage:true});
   await signOutReact();await page.reload();await ui(page.getByRole('heading',{name:'Sign in to your locker'})).toBeVisible();
   expect(await page.evaluate(()=>localStorage.getItem('locker-theme'))).toBe('dark');
   expect(await page.evaluate(()=>(window as any).cspViolations)).toEqual([]);expect(errors).toEqual([]);
+ });
+ it('shows a rejected sign-in and clears an authenticated session on a later 401', async () => {
+  await page.goto(origin);await page.getByLabel('Owner token',{exact:true}).fill('disposable-invalid-token');
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();await ui(page.locator('#notice')).toContainText('Request');
+  await ui(page.getByLabel('Owner token',{exact:true})).toHaveValue('');
+  await loginReact();await ui(page.locator('#refresh-time')).toContainText('Last refreshed');
+  await page.route('**/owner/overview?**',route=>route.fulfill({status:401,json:{error:{message:'Unauthorized'},request_id:'test-session-ended'}}));
+  await page.getByRole('button',{name:'Refresh now',exact:true}).click();
+  await ui(page.getByRole('heading',{name:'Sign in to your locker'})).toBeVisible();
+  await ui(page.locator('#approval-list')).toHaveCount(0);await page.unroute('**/owner/overview?**');
+ });
+ it('recovers from a failed route chunk without exposing error details or keeping the session', async () => {
+  await page.route('**/assets/existing-*.js', route=>route.fulfill({contentType:'text/javascript',body:'throw new Error("PRIVATE_ERROR_SENTINEL")'}));
+  await loginReact();
+  if(width===390)await page.getByRole('button',{name:'Open navigation'}).click();
+  await page.getByRole('link',{name:'Files',exact:true}).click();
+  await ui(page.getByRole('heading',{name:'This page could not load'})).toBeVisible();
+  expect(await page.locator('body').innerText()).not.toContain('PRIVATE_ERROR_SENTINEL');
+  await ui(page.locator('#approval-list')).toHaveCount(0);
+  await page.unroute('**/assets/existing-*.js');
+  await page.getByRole('button',{name:'Reload and sign in'}).click();
+  await ui(page.getByRole('heading',{name:'Sign in to your locker'})).toBeVisible();
+  await loginReact();await ui(page.getByRole('heading',{name:'Review requests'})).toBeVisible();await signOutReact();
  });
  it('loads complete inert request data before approval and applies an explicit batch decision',async()=>{
   const agent=await setupAgent(f),body='a'.repeat(7000)+'\nDANGEROUS_SUFFIX <script>window.pwned=1</script>\u001b\u202e';

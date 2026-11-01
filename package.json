@@ -11,7 +11,7 @@
     "node": ">=20.19"
   },
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "node --import tsx scripts/dev.ts",
     "build": "npm run web:build && wrangler deploy --dry-run --outdir dist",
     "typecheck": "tsc --noEmit && tsc -p packages/sdk/tsconfig.json --noEmit && tsc -p web/tsconfig.json",
     "test": "vitest run",
@@ -27,7 +27,6 @@
     "clients:build": "npm run sdk:build && npm run build --workspace packages/cli",
     "test:clients": "vitest run tests/sdk.test.ts tests/cli.test.ts tests/clients-integration.test.ts",
     "web:build": "vite build",
-    "predev": "npm run web:build",
     "pretest:mcp": "npm run web:build"
   },
   "dependencies": {

@@ -30,10 +30,12 @@ function Workspace() {
   return () => {window.removeEventListener('pagehide', leave); apiRef.current?.dispose(); queryClient.clear();};
  }, [queryClient]);
  async function signIn(event: FormEvent<HTMLFormElement>) {
-  event.preventDefault(); const form = event.currentTarget, input = form.elements.namedItem('token') as HTMLInputElement;
-  const api = new OwnerApi(input.value, signOut); input.value = ''; apiRef.current?.dispose(); apiRef.current = api;
+  event.preventDefault(); if (busy) return;
+  const form = event.currentTarget, input = form.elements.namedItem('token') as HTMLInputElement;
+  let authenticated = false;
+  const api = new OwnerApi(input.value, () => {if (authenticated) signOut();}); input.value = ''; apiRef.current?.dispose(); apiRef.current = api;
   const current = ++generation.current; setBusy(true); setNotice('');
-  try {const data = await api.session(); if (current === generation.current) setSession({api, data});}
+  try {const data = await api.session(); if (current === generation.current) {authenticated = true; setSession({api, data});}}
   catch (error) {if (current === generation.current) {api.dispose(); apiRef.current = null; setNotice(error instanceof Error ? visibleText(error.message) : 'Sign-in failed.');}}
   finally {if (current === generation.current) setBusy(false);}
  }
@@ -42,7 +44,7 @@ function Workspace() {
    <span className="eyebrow">OWNER WORKSPACE</span><h1>Sign in to your locker</h1><p>Review your agents’ requests and stay in control of what happens next.</p>
    <form onSubmit={signIn}><label htmlFor="owner-token">Owner token</label><input id="owner-token" name="token" type="password" autoComplete="off" required spellCheck={false} autoFocus />
     <p className="hint">Use the token saved during deployment. It stays in this tab’s memory. Reloading signs you out.</p><Button disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button></form>
-   <p id="notice" role="status">{notice}</p><details><summary>First time here?</summary><p>Set OWNER_TOKEN and a separate LOCKER_ENCRYPTION_KEY as Worker secrets. Keep your owner token in a password manager and an offline copy of your encryption key and its version.</p><p>Replace a lost owner token through Cloudflare or Wrangler.</p></details>
+   <p id="notice" role="status" className={notice ? "warning" : undefined}>{notice}</p><details><summary>First time here?</summary><p>Set OWNER_TOKEN and a separate LOCKER_ENCRYPTION_KEY as Worker secrets. Keep your owner token in a password manager and an offline copy of your encryption key and its version.</p><p>Replace a lost owner token through Cloudflare or Wrangler.</p></details>
   </main></div> : <SessionContext.Provider value={{api: session.api, signOut}}>
    {!session.data.setup_complete ? <Setup session={session.data} api={session.api} onDone={() => setSession({...session, data: {...session.data, setup_complete: true}})} signOut={signOut} /> :
     <Suspense fallback={<main className="page"><Skeleton /></main>}><Routes><Route element={<Shell />}>

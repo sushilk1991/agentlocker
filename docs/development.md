@@ -111,7 +111,10 @@ ignored `dist-web/`. UI primitives live in `web/src/components/ui/`. Routes load
 separately. The typed owner client calls the existing HTTP routes.
 
 `npm run web:build` builds only the UI. `npm run dev` builds it before starting
-Wrangler. After a UI edit, rebuild and reload. `npm run build` builds the UI and
+Wrangler and rebuilds after UI edits. Reload the browser to see changes. It serves
+the app and API at the same URL, with the production security headers. Stop it
+with Ctrl+C. Wrangler flags still work, such as `npm run dev -- --port 8788`.
+`npm run build` builds the UI and
 then runs the Worker deploy dry-run. The deployment script builds the UI before
 any remote step. The Cloudflare button still uses `npm run deploy`.
 
