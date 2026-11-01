@@ -9,13 +9,14 @@ export async function applyMigration(db: D1Database, name: string) {
  await db.batch(unstable_splitSqlQuery(sql).map(query => db.prepare(query)));
 }
 
-export async function database(migrate = true, worker = false, outbound?: (request: RuntimeRequest) => Promise<RuntimeResponse>) {
+export async function database(migrate = true, worker = false, outbound?: (request: RuntimeRequest) => Promise<RuntimeResponse>, origin = 'https://locker.example.com') {
  const bindings = {OWNER_TOKEN: 'owner-canary-' + 'a'.repeat(64), LOCKER_ENCRYPTION_KEY: btoa('k'.repeat(32)),
-  ENCRYPTION_KEY_VERSION: '1', PUBLIC_ORIGIN: 'https://locker.example.com', DEPLOYMENT_ID: 'test-deployment-id'};
- const script = worker ? (await build({entryPoints: ['src/index.ts'], bundle: true, write: false, format: 'esm', platform: 'browser'})).outputFiles[0].text
+  ENCRYPTION_KEY_VERSION: '1', PUBLIC_ORIGIN: origin, DEPLOYMENT_ID: 'test-deployment-id'};
+ const script = worker ? (await build({entryPoints: ['src/index.ts'], bundle: true, write: false, format: 'esm', platform: 'browser', plugins:[{name:'owner-assets',setup(build){build.onLoad({filter:/[\\/]public[\\/].*\.(html|css|js)$/},async args=>({contents:await readFile(args.path,'utf8'),loader:'text'}));}}]})).outputFiles[0].text
   : 'export default { fetch() { return new Response("test"); } };';
  const runtime = new Miniflare({
   modules: true,
+  ...(origin.startsWith('http:')?{host:'127.0.0.1',port:Number(new URL(origin).port)}:{}),
   script, bindings,
   compatibilityDate: '2025-10-14',
   d1Databases: ['DB'],
@@ -32,7 +33,7 @@ export async function database(migrate = true, worker = false, outbound?: (reque
  const env = {
   DB: db, FILES: await runtime.getR2Bucket('FILES') as unknown as R2Bucket, OWNER_TOKEN: 'owner-canary-' + 'a'.repeat(64),
   LOCKER_ENCRYPTION_KEY: btoa('k'.repeat(32)), ENCRYPTION_KEY_VERSION: '1',
-  PUBLIC_ORIGIN: 'https://locker.example.com', DEPLOYMENT_ID: 'test-deployment-id',
+  PUBLIC_ORIGIN: origin, DEPLOYMENT_ID: 'test-deployment-id',
  } satisfies Env;
  const context = (actor: Identity = {kind: 'owner', name: 'Owner'}): Context => ({
   env, actor, requestId: crypto.randomUUID(), ctx: {} as ExecutionContext,

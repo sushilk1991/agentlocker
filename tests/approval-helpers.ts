@@ -12,7 +12,7 @@ export async function setupAgent(f: Awaited<ReturnType<typeof database>>,withSec
  const secret=withSecret?await saveSecret(owner,{name:'key-'+key(),value:CANARY,hosts:['api.example.com'],injection_header:'Authorization',scheme:'bearer'}):null;
  await replaceGrants(owner,a.id,1,[{prefix:'/mine/',read:true,write:true,delete:true}],secret?[{secret_id:secret.id,read:true}]:[]);
  await setAgentStatus(owner,a.id,'enabled');
- const c=f.context(await authenticate(owner,bearer(t.token),false));
+ const c=f.context(await authenticate(owner,bearer(t.token,f.env.PUBLIC_ORIGIN+'/api/v1/files'),false));
  return {owner,a,t,secret,c};
 }
 export const writeFile=(f:Awaited<ReturnType<typeof database>>,p='/mine/'+key())=>submitWrite(f.context(),p,bytes('original'),'text/plain',null,key());

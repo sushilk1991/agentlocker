@@ -67,11 +67,14 @@ export async function revokeToken(c: Context, agentId: string, tokenId: string) 
  ]);
 }
 
-export async function setAgentStatus(c: Context, agentId: string, status: 'enabled' | 'disabled' | 'revoked') {
- await agent(c, agentId);
+export async function setAgentStatus(c: Context, agentId: string, status: 'enabled' | 'disabled' | 'revoked', details: {name?:string;description?:string} = {}) {
+ const previous = await agent(c, agentId);
+ assert(previous.status !== 'revoked', 'agent_revoked', 409);
+ assert(details.name === undefined || text(details.name,100), 'invalid_agent');
+ assert(details.description === undefined || typeof details.description === 'string' && details.description.length<=1000, 'invalid_agent');
  assert(['enabled', 'disabled', 'revoked'].includes(status), 'invalid_agent_status');
  await c.env.DB.batch([
-  statement(c, `UPDATE agents SET status=?,version=version+1,revoked_at=CASE WHEN ?='revoked' THEN COALESCE(revoked_at,${NOW}) ELSE revoked_at END WHERE id=?`, status, status, agentId),
+  statement(c, `UPDATE agents SET name=COALESCE(?,name),description=COALESCE(?,description),status=?,version=version+1,revoked_at=CASE WHEN ?='revoked' THEN COALESCE(revoked_at,${NOW}) ELSE revoked_at END WHERE id=?`, details.name, details.description, status, status, agentId),
   ...(status === 'revoked' ? [statement(c, `UPDATE agent_tokens SET revoked_at=COALESCE(revoked_at,${NOW}) WHERE agent_id=?`, agentId)] : []),
   ...(status !== 'enabled' ? invalidateStatements(c, 'agent_id=?', [agentId], 'agent_disabled') : []),
   auditStatement(c, 'agent.status', agentId, 'allow', status),

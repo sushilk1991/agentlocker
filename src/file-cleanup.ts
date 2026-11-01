@@ -16,7 +16,7 @@ export async function storageUsage(c: Context) {
  const s = await settings(c);
  const rows = await all(c, `SELECT COALESCE(SUM(length),0) AS bytes,COALESCE(SUM(CASE WHEN published_at IS NULL THEN length ELSE 0 END),0) AS staged_bytes FROM file_revisions`);
  await audit(c, 'files.usage', '/', 'allow', 'read');
- return {...rows[0], quota_bytes: s.quota_bytes, retention_ms: s.retention_ms};
+ return {bytes:Number(rows[0].bytes),staged_bytes:Number(rows[0].staged_bytes), quota_bytes: s.quota_bytes, retention_ms: s.retention_ms};
 }
 
 export async function cleanupFiles(c: Context, limit = 50) {

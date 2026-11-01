@@ -67,10 +67,10 @@ export async function reviewApproval(c: Context,id: string) {
  const input=['pending','ready'].includes(a.status)?(await verified(c,a)).input:await actionInput(c,a);
  const agent=await one(c,'SELECT name,description FROM agents WHERE id=?',a.agent_id);
  const token=await one(c,'SELECT label,expires_at FROM agent_tokens WHERE id=?',a.token_id);
- const scope=a.agent_id?{folders:await all(c,`SELECT prefix,read,write,"delete",expires_at FROM folder_grants WHERE agent_id=?`,a.agent_id),
-  secrets:await all(c,'SELECT secret_id,expires_at FROM secret_grants WHERE agent_id=?',a.agent_id)}:null;
+ const scope=a.agent_id?{folders:await all(c,`SELECT prefix,read,write,"delete",expires_at FROM folder_grants WHERE agent_id=? AND (expires_at IS NULL OR expires_at>${NOW})`,a.agent_id),
+  secrets:await all(c,`SELECT g.secret_id,s.name,g.expires_at FROM secret_grants g JOIN secrets s ON s.id=g.secret_id WHERE g.agent_id=? AND s.enabled=1 AND (g.expires_at IS NULL OR g.expires_at>${NOW})`,a.agent_id)}:null;
  await audit(c,'approval.review',a.target,'allow','read',{actionId:a.id,approvalId:id,metadata:{digest:a.digest}});
- return {...actionSummary(a),digest:a.digest,operation:a.operation,target:a.target,input,agent,token,scope};
+ return {...actionSummary(a),digest:a.digest,operation:a.operation,target:a.target,input,agent,token,scope,created_at:a.created_at,digest_context:{config_version:a.config_version,agent_id:a.agent_id,token_id:a.token_id}};
 }
 export async function approvalContent(c: Context,id: string) {
  const a=await approvalAction(c,id), {input}=await verified(c,a);

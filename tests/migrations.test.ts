@@ -35,7 +35,7 @@ describe('core D1 migrations', () => {
   await revokeToken(owner, a.id, t.id);
   await expect(f.db.prepare('UPDATE agent_tokens SET revoked_at=NULL WHERE id=?').bind(t.id).run()).rejects.toThrow('credential_revoked');
   await setAgentStatus(owner, a.id, 'revoked');
-  await expect(setAgentStatus(owner, a.id, 'enabled')).rejects.toThrow('agent_revoked');
+  await expect(setAgentStatus(owner, a.id, 'enabled')).rejects.toMatchObject({code:'agent_revoked',status:409});
   expect(await f.db.prepare('SELECT agent_id FROM agent_tokens WHERE id=?').bind(t.id).first('agent_id')).toBe(a.id);
  });
 

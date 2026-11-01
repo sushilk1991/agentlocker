@@ -4,6 +4,7 @@
   "compatibility_date": "2025-10-14", "compatibility_flags": ["nodejs_compat"], "workers_dev": true,
   "d1_databases": [{"binding": "DB", "database_name": "agentlocker", "database_id": "", "migrations_dir": "migrations"}],
   "r2_buckets": [{"binding": "FILES", "bucket_name": "agentlocker-files"}],
+  "rules": [{"type":"Text","globs":["**/public/*.html","**/public/*.css","**/public/*.js"],"fallthrough":false}],
   "triggers": {"crons": ["* * * * *"]},
   "vars": {"PUBLIC_ORIGIN": "", "DEPLOYMENT_ID": "", "ENCRYPTION_KEY_VERSION": "1"},
   "observability": {"enabled": false}
