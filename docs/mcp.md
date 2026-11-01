@@ -132,3 +132,5 @@ Neither hook is in the production entry point. This checks local transport and
 policy behavior; a deployed outbound smoke test remains future release work.
 The check restarts Wrangler against the same state, verifies retained actions and
 audit evidence without replay, then stops all servers and removes temporary state.
+SIGINT and SIGTERM also stop Wrangler and its workerd children and remove the
+temporary state. An interrupted test does not leave a local server running.

@@ -80,7 +80,12 @@ try {
  const first=await agent('First','/mine/',secret.id),second=await agent('Second','/other/');
  for(const token of [undefined,'invalid',r.owner])await assert.rejects(()=>connect(token),{code:401});
  const seen:{method:string;version:string|null;authorization:string|null}[]=[];
+ let includeCredential=true;
  const client=await connect(first.t.token,request=>{
+  if(!includeCredential) {
+   request.headers.delete('authorization');
+   request.headers.set('mcp-session-id','claimed-authenticated-session');
+  }
   if(request.method==='POST')seen.push({method:request.method,version:request.headers.get('mcp-protocol-version'),authorization:request.headers.get('authorization')});
  });
  const other=await connect(second.t.token);
@@ -98,6 +103,10 @@ try {
  assert.equal(tools.tools.find(t=>t.name==='locker_proxy_request')!.annotations!.openWorldHint,true);
  assert.equal(tools.tools.find(t=>t.name==='locker_file_delete')!.annotations!.destructiveHint,true);
  assert(seen.length>=3);assert(seen.slice(1).every(s=>s.version===LATEST_PROTOCOL_VERSION&&s.authorization===`Bearer ${first.t.token}`));
+ includeCredential=false;
+ await assert.rejects(()=>client.listTools(),{code:401});
+ await assert.rejects(()=>client.callTool({name:'locker_identity',arguments:{}}),{code:401});
+ includeCredential=true;
  for(const method of ['GET','DELETE']) {
   const response=await fetch(r.origin+'/mcp',{method,headers:{authorization:`Bearer ${first.t.token}`,accept:'text/event-stream'}});
   assert.equal(response.status,405);assert.equal(response.headers.get('allow'),'POST');
@@ -107,9 +116,12 @@ try {
   return fetch(r.origin+'/mcp',{method:'POST',headers:{'content-type':'application/json',accept:'application/json, text/event-stream',...(token?{authorization:`Bearer ${token}`} : {}),...headers},body:JSON.stringify(body)});
  }
  for(const token of [undefined,'invalid'])assert.equal((await rpc({jsonrpc:'2.0',id:1,method:'tools/list'},token)).status,401);
- assert.equal((await rpc({jsonrpc:'2.0',method:'notifications/initialized'},first.t.token)).status,202);
+ const notification=await rpc({jsonrpc:'2.0',method:'notifications/initialized'},first.t.token);
+ assert.equal(notification.status,202);assert.equal(await notification.text(),'');
  assert.equal((await rpc({jsonrpc:'2.0',id:1,method:'tools/list'},first.t.token,{'mcp-protocol-version':'1900-01-01'})).status,400);
  assert.equal((await rpc({jsonrpc:'2.0',id:1,method:'tools/list'},first.t.token,{origin:'https://evil.example.com'})).status,403);
+ assert.equal((await rpc({jsonrpc:'2.0',id:1,method:'tools/list'},first.t.token,{accept:'text/event-stream'})).status,406);
+ assert.equal((await rpc({jsonrpc:'2.0',id:1,method:'tools/list'},first.t.token,{'content-type':'text/plain'})).status,415);
  const protocolError=await (await rpc({jsonrpc:'2.0',id:1,method:'not-a-method'},first.t.token)).json() as any;
  assert.equal(protocolError.error.code,-32601);
  checked('real client negotiation, discovery, bearer on every request, and protocol responses');

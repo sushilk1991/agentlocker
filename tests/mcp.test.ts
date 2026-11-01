@@ -104,6 +104,17 @@ describe('MCP calls use the shared D1/R2 policy and approval services',()=> {
   await f.db.prepare("DELETE FROM approval_rules WHERE id='mcp-secret-list'").run();
   const stale=await callTool(agent.c,'locker_secrets_list',{cursor:page.cursor});expect(stale).toMatchObject({isError:true,structuredContent:{error:{code:'invalid_cursor'}}});
  });
+ it('ends an aborted wait without changing or discarding the pending action',async()=> {
+  const input={path:'/mine/abort-wait',text:'keep this',media_type:'text/plain',create_only:true,idempotency_key:key()};
+  const written=await call('locker_file_write',input);
+  const pending=await call('locker_file_delete',{path:input.path,expected_revision:written.result_revision,idempotency_key:key()});
+  const controller=new AbortController();
+  const waiting=callTool(agent.c,'locker_action_get',{action_id:pending.id,wait_seconds:20},controller.signal);
+  controller.abort();
+  expect(await waiting).toMatchObject({structuredContent:{id:pending.id,status:'pending'}});
+  expect(await call('locker_action_get',{action_id:pending.id})).toMatchObject({id:pending.id,status:'pending'});
+  expect(await call('locker_file_read',{path:input.path})).toMatchObject({content:btoa('keep this'),revision:written.result_revision});
+ });
  it('fails closed when an audit write fails before releasing a tool result',async()=> {
   await f.db.prepare("CREATE TRIGGER mcp_audit_fail BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT,'test_audit_failure'); END").run();
   try {

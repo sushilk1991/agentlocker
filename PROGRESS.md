@@ -53,13 +53,26 @@
 - Handoff boundary: file and secret management screens, policy/settings editing, remaining agent routes, MCP/SDK/CLI, and deployment checks remain separate work. Native iOS push is future work. No push integration, git push, or deployment was run.
 - Stopped at this chunk.
 
+## Chunk 05 — Remote MCP complete (01 Nov 2026)
+- Read the research and the MCP, shared policy, inline-limit, authentication, audit, and real-client requirements relevant to this chunk. This checkout already contained the endpoint and initial tests. Reviewed them and completed verification and test-harness fixes below.
+- Confirmed stateless Streamable HTTP at `/mcp` using the pinned official SDK 1.32.2. Every request, including initialization and discovery, authenticates an enabled agent token and checks deployment readiness, Origin, and rate limits. No MCP session grants access. Notifications return an empty 202; standalone GET/SSE and DELETE return 405.
+- Reviewed all nine tools: identity, file list/read/write/delete, secret metadata list, proxy request, action status, and retained result. They call the existing D1/R2 authorization, approval, execution, and audit services. Strict schemas reject extra arguments; tools accept neither claimed identities nor raw provider keys. Pending, ready, executing, succeeded, and unknown remain distinct. Waits are bounded to 20 seconds and never dispatch work.
+- Confirmed lossless binary content, a 1 MiB decoded inline limit, and authenticated HTTP alternatives above that limit. Replacement and exact-revision delete approvals use the same services as HTTP. All proxy methods require the owner web app decision. Secret listings contain metadata only; proxy results redact literal key echoes.
+- Reviewed `docs/mcp.md` and generated `docs/mcp-tools.json`. Discovery is compared with the generated schemas and annotations by the real-client test. Documentation states bearer-header requirements and the lack of OAuth or verified named-agent compatibility. No push or ntfy was added; native iOS push remains future work.
+- Extended `scripts/test-mcp.ts` to remove credentials from an already initialized real client and supply a claimed session ID. Discovery and tool calls both fail with 401. Added empty-notification-body, Accept, and Content-Type assertions. Added a D1/R2 regression proving an aborted wait preserves the pending deletion and current file bytes.
+- Fixed local harness cleanup after finding a Wrangler process left by the earlier run. Cleanup now stops the complete process group even if the Wrangler wrapper has exited, handles migration timeout cleanup, shares concurrent cleanup, and handles SIGINT/SIGTERM. A separate real child-process SIGTERM check verified exit 143, a closed port, and removed temporary persistence. Stopped and removed the earlier orphan too.
+- The real MCP test uses fresh local D1/R2, production migrations, temporary secrets outside the checkout, owner HTTP provisioning, and the official Client/StreamableHTTPClientTransport against wrangler dev. Its four groups cover negotiation/discovery, scoped binary files and inline boundaries, exact delete/send decisions and results, denial/expiry/unknown, HTTP parity, linked audit evidence, restart persistence without replay, and immediate revocation. Only the test entry point redirects the controlled upstream or changes fixture expiry.
+- Verification: `npx tsc --noEmit`, `git diff --check`, and a local Wrangler build dry-run passed. `npm run test:mcp` passed all four real-client groups using SDK 1.32.2 and protocol 2025-11-25. Final `npx vitest run` passed **233/233 tests across 15/15 files**: MCP 17, proxy 40, approvals 13, owner browser 5, file actions 10, files 23, grants 16, file HTTP 19, approval HTTP 6, owner HTTP 5, migrations 7, auth 18, audit 15, paths 26, audit-query units 13. No local socket failure occurred. `fileParallelism` remains false. All local runtimes and servers were stopped; no MCP temporary directories remain.
+- Handoff boundary: SDK/CLI, remaining Worker routes, file/secret management screens, policy/settings editing, setup/deployment work, and named coding/personal agent compatibility checks remain later chunks. A deployed outbound smoke test remains release work.
+- Stopped at this chunk. No git push or deployment was run.
+
 ## In progress
-- Remaining Worker routes, file/secret management screens, policy/settings forms, MCP, SDK, and CLI.
-- Remaining browser checks for later screens and tests with the official MCP client over HTTP.
+- Remaining Worker routes, file/secret management screens, policy/settings forms, SDK, and CLI.
+- Remaining browser checks for later screens and manual named-agent compatibility checks.
 
 ## Next
 - Continue with the next bounded chunk for the remaining services and clients. Shared approval execution is connected to stored file actions.
-- Run type checking and tests for each chunk. Browser checks and the real wrangler dev MCP client test belong to their later chunks.
+- Run type checking and tests for each chunk. The real wrangler dev MCP client test now passes; keep it in later client and release checks. Remaining browser checks belong to their screen chunks.
 - Record exact counts and release checks that need a disposable Cloudflare account.
 - No git push or production deployment in this task.
 
