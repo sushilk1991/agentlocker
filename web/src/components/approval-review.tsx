@@ -2,6 +2,7 @@ import { Download, Check, X, ShieldAlert } from 'lucide-react';
 import { ByteReview } from './byte-review';
 import { Button } from './ui/button';
 import { Skeleton } from './ui/skeleton';
+import { Badge } from './ui/badge';
 import { download, visibleText, type LoadedReview } from '../lib/review';
 import type { ActionState } from '../lib/api';
 export function ApprovalReview({review, error, status, busy, changedHost, onDecide, onRevoke}: {
@@ -14,7 +15,7 @@ export function ApprovalReview({review, error, status, busy, changedHost, onDeci
  const active = status === 'pending' && data.expires_at > Date.now();
  const reason = data.operation === 'proxy.request' ? 'Every outbound request needs approval.' : data.operation === 'file.delete' ? 'Every deletion needs approval.' : data.operation === 'file.write' && input.expected_revision ? 'Replacing an existing revision needs approval.' : 'An owner rule requires review.';
  const state = status === 'pending' && !active ? 'expired' : status;
- return <article className="panel review-card"><div className="review-heading"><div><p className="eyebrow">COMPLETE REVIEW</p><h3>{visibleText(data.agent.name)} · {visibleText(data.operation)}</h3></div><span className="badge">{state}</span></div>
+ return <article className="panel review-card"><div className="review-heading"><div><p className="eyebrow">COMPLETE REVIEW</p><h3>{visibleText(data.agent.name)} · {visibleText(data.operation)}</h3></div><Badge>{state}</Badge></div>
   <p>Task: {visibleText(data.token.label)} · created {new Date(data.created_at).toLocaleString()} · expires {new Date(data.expires_at).toLocaleString()}</p><p>{reason}</p>
   {input.path && <div className="revision-grid"><section><h4>{data.operation === 'file.delete' ? 'Delete this revision' : 'Current revision'}</h4><p>{visibleText(input.path)}</p><p>Revision: {visibleText((reading ? input.revision : input.expected_revision) || 'New file')}</p><p>SHA-256: {visibleText((reading ? input.hash : input.previous_hash) || 'None')}</p><p>Size: {(reading ? input.length : input.previous_length) ?? 0} bytes</p></section>{input.revision && !reading && <section><h4>{input.expected_revision ? 'Replacement revision' : 'New revision'}</h4><p>Revision: {visibleText(input.revision)}</p><p>SHA-256: {visibleText(input.hash || '')}</p><p>Size: {input.length} bytes</p></section>}</div>}
   {input.request && <section className="request-summary"><h4>{visibleText(input.request.method)} {visibleText(new URL(input.request.url).hostname)}</h4><p>Full path and query: {visibleText(new URL(input.request.url).pathname + new URL(input.request.url).search)}</p><p>Credential placeholder: {visibleText(input.injection_header || '')}: {input.scheme === 'bearer' ? 'Bearer ' : ''}[secret {visibleText(input.secret || '')}, value version {input.value_version}]. Only the stored key bytes are hidden.</p></section>}

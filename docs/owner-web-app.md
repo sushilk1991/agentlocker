@@ -1,14 +1,20 @@
 # Owner web app
 
 The new React workspace opens at `/` or `/approvals`. It includes sign-in,
-first-run setup, a responsive sidebar, theme selection, and complete single and
-batch approval review. Other sidebar pages link to the existing management app
+first-run setup, a responsive sidebar, theme selection, complete single and
+batch approval review, and agent, token, and grant management at `/agents`.
+Other sidebar pages link to the existing management app
 at `/legacy`. Sign in there again; credentials are never passed between pages.
 All original management screens remain available during this staged redesign.
 
 The theme follows your system by default. Its light or dark preference is saved
 in browser storage. Tokens, review data, and secret values are not saved there.
 Signing out aborts requests and clears the private query cache and review data.
+The Agents screen shows task tokens once in its management dialog. Closing the
+dialog clears the new token. Save grant edits before enabling an agent. Grant
+saves confirm the reviewed version and warn that waiting requests will be
+invalidated. A version conflict keeps the form blocked until you reload grants.
+View agent activity opens its filtered audit log in `/legacy`. Sign in again.
 If a screen cannot load, the app clears that session and offers a reload. Sign
 in again and check the queue before repeating a request.
 

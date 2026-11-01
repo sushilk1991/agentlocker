@@ -41,5 +41,6 @@ the Worker does not currently serve documentation routes.
 - [Research](docs/research.md): Reported problems and source links.
 - [License](LICENSE): MIT for code and documentation.
 
-The redesigned owner approvals workspace is at `/`. Other owner management screens
+The redesigned owner workspace is at `/`. It includes approvals and agent, token,
+and grant management. Other owner management screens
 remain at `/legacy` during the UI migration. Both use the existing owner HTTP API.

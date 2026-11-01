@@ -11,6 +11,7 @@ import { Skeleton } from './components/ui/skeleton';
 import { ShieldCheck } from 'lucide-react';
 const Shell = lazy(() => import('./components/shell'));
 const Approvals = lazy(() => import('./routes/approvals'));
+const Agents = lazy(() => import('./routes/agents'));
 const Existing = lazy(() => import('./routes/existing'));
 
 function Workspace() {
@@ -49,7 +50,8 @@ function Workspace() {
    {!session.data.setup_complete ? <Setup session={session.data} api={session.api} onDone={() => setSession({...session, data: {...session.data, setup_complete: true}})} signOut={signOut} /> :
     <Suspense fallback={<main className="page"><Skeleton /></main>}><Routes><Route element={<Shell />}>
      <Route index element={<Navigate to="/approvals" replace />} /><Route path="approvals" element={<Approvals />} />
-     {['agents', 'files', 'secrets', 'policy', 'audit', 'settings'].map(path => <Route key={path} path={path} element={<Existing key={location.pathname} />} />)}
+     <Route path="agents" element={<Agents />} />
+     {['files', 'secrets', 'policy', 'audit', 'settings'].map(path => <Route key={path} path={path} element={<Existing key={location.pathname} />} />)}
      <Route path="*" element={<Navigate to="/approvals" replace />} />
     </Route></Routes></Suspense>}
   </SessionContext.Provider>}

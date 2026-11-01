@@ -61,7 +61,11 @@ $('setup-form').addEventListener('submit',event=>{event.preventDefault();run(asy
  await api('setup',{method:'POST',key:setupKey,body:{approval_ttl:Number($('setup-expiry').value)*60000,quota_bytes:setupDefaults.quota_bytes,retention_ms:setupDefaults.retention_ms}});
  show('setup',false);await enterWorkspace();message('Setup complete. Create an agent, add narrow grants and a task token, then review them before enabling it.');
 });});
-async function enterWorkspace() { show('workspace',true); await switchView(['agents','files','secrets','policy','audit','settings'].includes(location.hash.slice(1))?location.hash.slice(1):'activity'); await refreshOverview(); }
+async function enterWorkspace() {
+ const agentId=new URLSearchParams(location.search).get('agent_id');
+ if(agentId){auditParams=new URLSearchParams({agent_id:agentId,include_routine:'true'});$('audit-filter').elements.namedItem('agent_id').value=agentId;}
+ show('workspace',true); await switchView(['agents','files','secrets','policy','audit','settings'].includes(location.hash.slice(1))?location.hash.slice(1):'activity'); await refreshOverview();
+}
 async function switchView(name) {
  view=name; for(const e of document.querySelectorAll('.view')) e.hidden=e.id!==name;
  for(const e of document.querySelectorAll('nav button')) { if(e.dataset.view===name)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current'); }

@@ -127,5 +127,7 @@ inline styles. The Vite Sonner transform fails if its expected integration point
 changes during a dependency upgrade.
 
 Browser tests build production assets once before using real Miniflare static
-assets, D1, and R2. The React approval checks run at 1280 and 390 pixels. Existing
-management checks continue against `/legacy`. Those screens move in later chunks.
+assets, D1, and R2. React approval and agent management checks run at 1280 and
+390 pixels. They cover complete review, task tokens, grant expiry and conflicts,
+and revocation. Other management checks continue against `/legacy`. Those
+screens move in later chunks.

@@ -9,7 +9,7 @@ export interface Overview {
 }
 export interface Approval {
  approval_id: string; id: string; agent_name: string; token_label: string; operation: string;
- target: string; status: ActionState; created_at: number; expires_at: number;
+ target: string; status: ActionState; approval_state: 'pending' | 'approved' | 'denied' | 'expired' | 'invalidated'; created_at: number; expires_at: number;
 }
 export interface ReviewInput {
  [key: string]: unknown;
@@ -28,6 +28,20 @@ export interface DecisionResult {
  batch_id?: string; results: {approval_id: string; id?: string; status?: ActionState; error_code?: string}[];
 }
 export type Member = {id: string; digest: string};
+export interface AgentToken {id: string; label: string; prefix: string; created_at: number; expires_at: number; revoked_at: number | null}
+export interface Agent {
+ id: string; name: string; description: string; status: 'enabled' | 'disabled' | 'revoked'; version: number;
+ created_at: number; revoked_at: number | null; tokens: AgentToken[];
+}
+export interface FolderGrant {prefix: string; read: boolean; write: boolean; delete: boolean; expires_at: number | null}
+export interface KeyGrant {secret_id: string; read: true; expires_at: number | null}
+type StoredFolderGrant = Omit<FolderGrant, 'read' | 'write' | 'delete'> & {read: number; write: number; delete: number};
+type StoredKeyGrant = Omit<KeyGrant, 'read'> & {read: number; name: string; enabled: number};
+export interface AgentGrants {
+ version: number; folders: StoredFolderGrant[]; secrets: StoredKeyGrant[];
+ effective: {folders: StoredFolderGrant[]; secrets: StoredKeyGrant[]};
+}
+export interface KeyMetadata {id: string; name: string; enabled: boolean; hosts: string[]}
 
 export class ApiError extends Error {
  readonly name = 'ApiError';
@@ -85,4 +99,21 @@ export class OwnerApi {
   return this.request<DecisionResult>('approvals/batch-decision', {method: 'POST', body: {members, decision, reason}});
  }
  revokeAgent(id: string) { return this.request<{updated: boolean}>(`agents/${encodeURIComponent(id)}`, {method: 'PATCH', body: {status: 'revoked'}}); }
+ agents(signal: AbortSignal) {return this.request<{agents: Agent[]}>('agents', {signal});}
+ createAgent(name: string, description: string) {return this.request<Pick<Agent, 'id' | 'name' | 'status'>>('agents', {method: 'POST', body: {name, description}});}
+ setAgentStatus(id: string, status: Agent['status']) {return this.request<{updated: boolean}>(`agents/${encodeURIComponent(id)}`, {method: 'PATCH', body: {status}});}
+ issueToken(id: string, label: string, lifetime_ms: number) {return this.request<AgentToken & {token: string}>(`agents/${encodeURIComponent(id)}/tokens`, {method: 'POST', body: {label, lifetime_ms}});}
+ revokeToken(agentId: string, tokenId: string) {return this.request<{revoked: boolean}>(`agents/${encodeURIComponent(agentId)}/tokens/${encodeURIComponent(tokenId)}`, {method: 'DELETE'});}
+ grants(id: string, signal: AbortSignal) {return this.request<AgentGrants>(`agents/${encodeURIComponent(id)}/grants`, {signal});}
+ saveGrants(id: string, expected_version: number, folders: FolderGrant[], secrets: KeyGrant[]) {
+  return this.request<{version: number}>(`agents/${encodeURIComponent(id)}/grants`, {method: 'PUT', body: {expected_version, folders, secrets}});
+ }
+ async allKeys(signal: AbortSignal) {
+  const keys: KeyMetadata[] = []; let cursor: string | null = null;
+  do {
+   const page: {secrets: KeyMetadata[]; cursor: string | null} = await this.request('secrets?limit=100' + (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''), {signal});
+   keys.push(...page.secrets); cursor = page.cursor;
+  } while (cursor);
+  return keys;
+ }
 }
