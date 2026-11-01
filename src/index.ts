@@ -8,7 +8,7 @@ import { cleanupFiles } from './file-cleanup';
 import { gateFileRead } from './file-read-actions';
 import { download, fileMetadata, listFiles, pageLimit, readFile, retainedContent, revisions, visibleFile } from './files';
 import { bounded, path, sha, validateConfig } from './security';
-import { assert, Context, Env, json, LIMITS, LockerError, opaqueId } from './types';
+import { assert, Context, Env, json, LIMITS, LockerError, opaqueId, TERMINAL } from './types';
 
 function precondition(request: Request, create: boolean) {
  const match = request.headers.get('if-match'), none = request.headers.get('if-none-match');
@@ -20,8 +20,9 @@ function query(url: URL, allowed: string[]) {
  for (const key of url.searchParams.keys()) assert(allowed.includes(key) && url.searchParams.getAll(key).length === 1, 'invalid_query');
 }
 function actionResponse(c: Context, action: {status: string}) {
- const response = json({request_id: c.requestId, ...action}, action.status === 'succeeded' ? 200 : 202);
- if (action.status !== 'succeeded') response.headers.set('retry-after', '2');
+ const unfinished = !TERMINAL.has(action.status);
+ const response = json({request_id: c.requestId, ...action}, unfinished ? 202 : 200);
+ if (unfinished) response.headers.set('retry-after', '2');
  return response;
 }
 async function bodyJson(request: Request,allowed?: string[]) {

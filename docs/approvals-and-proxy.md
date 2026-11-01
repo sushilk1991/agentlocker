@@ -61,6 +61,8 @@ Read status at `/api/v1/actions/:id`. Read retained results at
 Results need current permission and expire after 24 hours. A different valid token
 for the same agent may read them. Another agent cannot. Expired payloads return
 410 `result_expired`; the action summary and audit history remain.
+Each scheduled sweep erases up to 100 expired payloads and skips rows already
+cleared, so a backlog drains over successive runs.
 
 ## Secret setup and use
 
@@ -138,3 +140,6 @@ Submission retry mappings last seven days and belong to an identity. The same ke
 and input returns the same action without extending expiry. Changed input returns
 409. Equivalent decoded base64 bytes deduplicate. After seven days the key may
 create a new action. Never treat a lost or unknown send as safe to submit again.
+A retry that finds a terminal action returns HTTP 200 with its recorded state.
+Only unfinished actions return 202 and `Retry-After`. HTTP 200 does not turn a
+denied, failed, expired, or unknown action into a successful operation.

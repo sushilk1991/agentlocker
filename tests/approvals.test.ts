@@ -147,4 +147,20 @@ describe('durable exact approvals and execution with real D1/R2',()=>{
   finally {await f.db.prepare('DROP TRIGGER fail_claim').run();}
   expect((await row(a.id)).status).toBe('ready');expect(fetcher).not.toHaveBeenCalled();
  });
+ it('erases expired payloads across successive bounded sweeps without revisiting cleared rows',async()=>{
+  const prefix='retention-'+key();
+  // More than one sweep's limit. These terminal fixtures need no execution.
+  await f.db.prepare(`WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<105)
+   INSERT INTO actions(id,request_id,operation,target,digest,submission_digest,config_version,status,
+    created_at,updated_at,expires_at,result_expires_at,input_cipher,input_nonce,key_version,result_cipher,result_nonce,result_key_version)
+   SELECT ?||value,'retention-test','proxy.request','retention','digest','submission',1,'succeeded',0,0,1,1,
+    'expired-cipher','nonce','1','expired-result','nonce','1' FROM n`).bind(prefix).run();
+  await sweepActions(f.context());
+  expect(await f.db.prepare('SELECT count(*) FROM actions WHERE id LIKE ? AND input_cipher IS NOT NULL').bind(prefix+'%').first('count(*)')).toBeGreaterThan(0);
+  await sweepActions(f.context());
+  expect(await f.db.prepare(`SELECT count(*) FROM actions WHERE id LIKE ? AND
+   (input_cipher IS NOT NULL OR input_nonce IS NOT NULL OR key_version IS NOT NULL OR result_cipher IS NOT NULL OR result_nonce IS NOT NULL OR result_key_version IS NOT NULL)`)
+   .bind(prefix+'%').first('count(*)')).toBe(0);
+  expect(await f.db.prepare('SELECT count(*) FROM actions WHERE id LIKE ?').bind(prefix+'%').first('count(*)')).toBe(105);
+ });
 });

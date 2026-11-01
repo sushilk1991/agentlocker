@@ -201,7 +201,10 @@ export async function sweepActions(c: Context,fetcher: typeof fetch=fetch) {
   if(a.status==='ready'&&executed++<10)await executeAction(c,a.id,fetcher);
  }
  await c.env.DB.batch([
-  statement(c,`UPDATE actions SET input_cipher=NULL,input_nonce=NULL,key_version=NULL,result_cipher=NULL,result_nonce=NULL,result_key_version=NULL WHERE id IN(SELECT id FROM actions WHERE status NOT IN('pending','ready','executing') AND result_expires_at<=${NOW} LIMIT 100)`),
+  statement(c,`UPDATE actions SET input_cipher=NULL,input_nonce=NULL,key_version=NULL,result_cipher=NULL,result_nonce=NULL,result_key_version=NULL WHERE id IN(
+   SELECT id FROM actions WHERE status NOT IN('pending','ready','executing') AND result_expires_at<=${NOW}
+   AND (input_cipher IS NOT NULL OR input_nonce IS NOT NULL OR key_version IS NOT NULL OR result_cipher IS NOT NULL OR result_nonce IS NOT NULL OR result_key_version IS NOT NULL)
+   ORDER BY result_expires_at,id LIMIT 100)`),
   statement(c,`DELETE FROM idempotency_keys WHERE rowid IN(SELECT rowid FROM idempotency_keys WHERE expires_at<=${NOW} LIMIT 100)`),
  ]);
 }

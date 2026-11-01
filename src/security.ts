@@ -103,6 +103,14 @@ export function redact(data: Uint8Array,secret: string): Uint8Array {
  return new Uint8Array(out);
 }
 export function safeResponseHeaders(headers: Headers,secret: string) {
- const out:Record<string,string>={};for(const [k,v] of headers) if(!forbidden.test(k)&&!k.includes(secret.toLowerCase())&&!['set-cookie','www-authenticate','authentication-info'].includes(k))out[k]=new TextDecoder().decode(redact(bytes(v),secret));return out;
+ // Connection can name additional hop-by-hop headers. Drop those along with
+ // cookies and authentication headers before storing any response for an agent.
+ const connection=new Set((headers.get('connection')??'').split(',').map(name=>name.trim().toLowerCase()));
+ const out:Record<string,string>={};
+ for(const [k,v] of headers) {
+  if(forbidden.test(k)||connection.has(k)||k.includes(secret.toLowerCase())||['set-cookie','set-cookie2','www-authenticate','authentication-info'].includes(k))continue;
+  out[k]=new TextDecoder().decode(redact(bytes(v),secret));
+ }
+ return out;
 }
 export const csvCell = (v: unknown) => '"'+String(v??'').replace(/^[=+@\-\t\r]/,"'$&").replaceAll('"','""')+'"';

@@ -53,7 +53,7 @@ describe('encrypted secrets and approval-gated outbound proxy',()=>{
    expect(new Headers(init.headers).get('authorization')).toBe('Bearer '+CANARY);
    expect(new Headers(init.headers).get('cookie')).toBeNull();expect(new TextDecoder().decode(init.body)).toBe('hello');
    const stream=new ReadableStream<Uint8Array>({start(controller){controller.enqueue(bytes('prefix '+CANARY.slice(0,9)));controller.enqueue(bytes(CANARY.slice(9)+' suffix'));controller.close();}});
-   return new Response(stream,{status:302,headers:{'location':'https://api.example.com/redirect','set-cookie':'bad='+CANARY,'authorization':'Bearer '+CANARY,'www-authenticate':CANARY,'x-echo':CANARY,'content-type':'text/plain'}});
+   return new Response(stream,{status:302,headers:{'location':'https://api.example.com/redirect','set-cookie':'bad='+CANARY,'set-cookie2':'legacy-cookie','authorization':'Bearer '+CANARY,'www-authenticate':CANARY,'x-echo':CANARY,'content-type':'text/plain',connection:'keep-alive, X-Hop-Token','x-hop-token':'connection-only'}});
   });
   try {
    expect(await executeAction(f.context(),a.id,fetcher)).toMatchObject({status:'succeeded',result:{upstream_status:302}});
@@ -61,6 +61,7 @@ describe('encrypted secrets and approval-gated outbound proxy',()=>{
    expect(new TextDecoder().decode(unbase64(result.body_base64))).toBe('prefix [REDACTED] suffix');
    expect(result.headers).toMatchObject({'x-echo':'[REDACTED]',location:'https://api.example.com/redirect'});
    expect(result.headers).not.toHaveProperty('authorization');expect(result.headers).not.toHaveProperty('set-cookie');expect(result.headers).not.toHaveProperty('www-authenticate');
+   expect(result.headers).not.toHaveProperty('set-cookie2');expect(result.headers).not.toHaveProperty('x-hop-token');expect(result.headers).not.toHaveProperty('connection');
    expect(JSON.stringify(result)).not.toContain(CANARY);expect(fetcher).toHaveBeenCalledTimes(1);
    const stored=await row(a.id);expect(stored.result_cipher).toBeTypeOf('string');expect(JSON.stringify(stored)).not.toContain(CANARY);
    const audit=await f.db.prepare('SELECT * FROM audit_events').all();

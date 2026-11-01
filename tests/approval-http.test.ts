@@ -67,6 +67,18 @@ describe('approval and proxy routes in the real bundled Worker',()=>{
   const list=await (await request('approvals?state=denied',true)).json<any>();expect(list.approvals.map((x:any)=>x.id)).toContain(a.id);
   expect((await request('proxy/requests',false,'POST',{secret:secret.name,url:'https://evil.example.com/',method:'GET'})).status).toBe(404);
  });
+ it('returns a retained terminal decision on submission retry without pending HTTP status or another send',async()=>{
+  const idempotency=key(),input={secret:secret.name,url:'https://api.example.com/retry',method:'GET'};
+  const first=await request('proxy/requests',false,'POST',input,{'idempotency-key':idempotency});
+  expect(first.status).toBe(202);expect(first.headers.get('retry-after')).toBe('2');
+  const a=await first.json<any>(),before=captured.length;
+  const review=await (await request(`approvals/${a.approval_id}`,true)).json<any>();
+  expect((await request(`approvals/${a.approval_id}/decision`,true,'POST',{digest:review.digest,decision:'deny'})).status).toBe(200);
+  const retry=await request('proxy/requests',false,'POST',input,{'idempotency-key':idempotency});
+  expect(retry.status).toBe(200);expect(retry.headers.has('retry-after')).toBe(false);
+  expect(await retry.json<any>()).toMatchObject({id:a.id,status:'denied',expires_at:a.expires_at});
+  expect(captured).toHaveLength(before);
+ });
  it('creates, replaces and disables secrets without returning stored bytes',async()=>{
   const name='http-'+key(),input={name,value:CANARY,hosts:['api.example.com'],injection_header:'x-api-key',scheme:'plain'};
   const created=await request('secrets',true,'POST',input);expect(created.status).toBe(201);const s=await created.json<any>();

@@ -26,12 +26,24 @@
 - Handoff boundary: the shared approval decision/claim/expiry engine, execution/result retrieval for rule-gated reads, immediate/scheduled approval dispatch, and owner web app remain for later chunks. There is no HTTP approval shortcut. Tests authorize pending mutations only through their database fixture before calling the internal file executor. MCP/SDK/CLI, complete owner routes, setup, and deployment checks are unchanged future chunks.
 - Stopped at this chunk. No git push or deployment was run.
 
+## Chunk 03 — Approvals and secrets proxy complete (01 Nov 2026)
+- Read the research and the requirements for secret containment, proxy validation, exact approval, states, expiry, result retention, HTTP responses, and tests. This checkout already contained the first implementation of this chunk. Reviewed it, ran its tests, and fixed the issues below.
+- Confirmed pending deletes, replacements, and all proxy methods, including GET and HEAD. Owner-only POST decisions bind the displayed digest to immutable encrypted input. Decision and execution transactions recheck database time, original credentials, grants, policy, file revisions, and secret versions. Individual and bounded batch decisions retain their audit records.
+- Confirmed separate approval and execution states, one-winner claims, immediate dispatch with scheduled fallback, dispatch markers before fetch, terminal reconciliation to unknown for abandoned sends, and protection against late completions. Status and result reads never dispatch. Approved file mutations and rule-gated reads use the shared engine.
+- Confirmed AES-GCM secret storage and encrypted queued inputs/results. Saved values have no retrieval endpoint. Named grants permit proxy use only. The proxy validates exact public hosts, injects the selected credential, disables redirects, bounds requests/responses, strips credential and cookie headers, and redacts literal key echoes across response chunks. Timeout and incomplete responses remain unknown and are never automatically retried.
+- Fixed bounded payload cleanup so successive sweeps skip already-cleared records and drain the backlog. A real D1 regression uses 105 expired actions and verifies that metadata survives while encrypted inputs/results are erased.
+- Fixed response filtering to remove legacy cookie headers and headers named by upstream Connection. Extended the secret-never-leaked test to cover these headers alongside body/header echoes, stored results, audit events, and captured logs.
+- Fixed terminal submission retries to return HTTP 200 with the recorded state, without Retry-After. Pending/ready/executing responses remain 202. A bundled Worker HTTP test verifies a denied retry retains the action and deadline without sending.
+- Reviewed migration 0004 and schema version 4, and updated docs/approvals-and-proxy.md. No push service or approval links were added. The owner web app and native iOS push remain separate later work.
+- Verification: `npx tsc --noEmit`, `npx vitest run`, and `git diff --check` passed. Full suite: **193/193 tests across 11/11 files**: approvals 13, proxy 40, approval HTTP 6, files 23, file actions 10, file HTTP 19, migrations 7, auth 18, grants 16, audit 15, paths 26. New regression assertions failed before their fixes and passed afterward. Tests use real local D1/R2 and production migrations; HTTP tests run the bundled Worker. No local workerd socket failure occurred. `fileParallelism` remains false and test runtimes are disposed.
+- Stopped at this chunk. No git push or deployment was run.
+
 ## In progress
-- Shared approval/action services, remaining Worker routes, dashboard, MCP, SDK, and CLI.
-- Tests with real local D1/R2 and the official MCP client over HTTP.
+- Remaining Worker routes, owner web app, MCP, SDK, and CLI.
+- Browser checks and tests with the official MCP client over HTTP.
 
 ## Next
-- Connect stored file actions to the shared approval engine in its bounded chunk. Later chunks add the remaining services and clients.
+- Continue with the next bounded chunk for the remaining services and clients. Shared approval execution is connected to stored file actions.
 - Run type checking and tests for each chunk. Browser checks and the real wrangler dev MCP client test belong to their later chunks.
 - Record exact counts and release checks that need a disposable Cloudflare account.
 - No git push or production deployment in this task.
