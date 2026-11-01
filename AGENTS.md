@@ -76,8 +76,15 @@ Use placeholders in examples. Do not print real tokens, key values, ciphertext,
 or private payloads in logs, screenshots, issue text, or test failure output.
 Keep `.dev.vars` private and ignored. Never commit live resource identifiers.
 
-`npm run deploy`, `npm run setup:local`, and `npm run test:smoke` currently point
-to missing scripts. See `docs/deploy.md` and `docs/development.md` before setup.
+`npm run deploy` provisions selected storage, applies remote migrations, and
+uploads code. Run it only when deployment is authorized. Keep the ignored
+`.agentlocker/` deployment record. Never change an existing deployment ID.
+`npm run setup:local` creates private `.dev.vars` once and applies local migrations.
+It uses `http://localhost:8787` by default. `npm run test:smoke` uses the explicit
+`AGENTLOCKER_URL` and `AGENTLOCKER_OWNER_TOKEN` environment values. Use a disposable
+locker: smoke creates agents, grants, files, and a secret, then disables/revokes
+them and soft-deletes its files. Grant changes can invalidate existing approvals.
+See `docs/deploy.md` and `docs/development.md` before setup or smoke testing.
 
 ## Using a locker as an agent
 

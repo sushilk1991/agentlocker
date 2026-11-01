@@ -12,7 +12,8 @@ There is no shared service or inbox. The code and docs use the [MIT license](LIC
 This is a work in progress. The file API, approvals, encrypted secrets proxy,
 owner web app, remote MCP server, SDK, and CLI have local tests. The app includes
 file history and restore, secret management, policy, settings, and approval review.
-Deployment automation and a fresh-account deployment check are still needed.
+Deployment scripts and a local smoke check are included. A fresh-account
+Cloudflare deployment check is still needed.
 See [PROGRESS.md](PROGRESS.md).
 
 ## Deploy your own
@@ -21,16 +22,21 @@ You need a Cloudflare account with permission to create Workers, D1, and R2.
 Enable R2 first. Its subscription checkout may require payment details, even
 when your use fits the free allowance. See [Cloudflare's R2 setup guide](https://developers.cloudflare.com/r2/get-started/).
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=REPLACE_WITH_PUBLIC_REPOSITORY_URL)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/sushilk1991/agentlocker)
 
-**Button preparation is incomplete:** this checkout has no public repository URL.
-The maintainer must replace `REPLACE_WITH_PUBLIC_REPOSITORY_URL` above before
-publishing. The button is not a working quick start yet. The deploy script is
-also missing. Do not treat this checkout as a released one-click template.
+1. Click the button. Connect GitHub and choose your Worker and storage names.
+2. Fill in `OWNER_TOKEN` with `openssl rand -hex 32` output. Fill in
+   `LOCKER_ENCRYPTION_KEY` with separate `openssl rand -base64 32` output.
+   Run these commands on a private terminal. Save the token in a password
+   manager. Keep an offline copy of the encryption key and its version, `1`.
+3. Confirm the commands, including `npm run deploy`. Cloudflare provisions D1
+   and R2. The script applies migrations, deploys, and sets the assigned origin.
+4. Open the printed URL. Sign in with the owner token and confirm setup defaults.
+5. Create a disabled agent, grant a narrow folder, issue a task token, then
+   review its grants and enable it. Keep the web app open for approvals.
 
-The [deployment guide](docs/deploy.md) lists the configuration, secret inputs,
-terminal fallback, and checks still needed. It does not require another server,
-KV, or Durable Objects. Nothing in this documentation task deploys resources.
+The [deployment guide](docs/deploy.md) covers terminal login, safe retries,
+and the opt-in smoke test. Fresh-account button deployment remains unverified.
 
 ## What an agent can do
 
@@ -115,4 +121,4 @@ Read [AGENTS.md](AGENTS.md) before changing the code.
 
 Keep separate backups. Retained revisions and an audit export do not back up
 the whole locker. Local tests do not replace a deployed smoke test or a restore
-drill. Both remain release work.
+drill. A local smoke run does not verify Cloudflare deployment or recovery.

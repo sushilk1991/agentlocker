@@ -45,10 +45,10 @@
   "cloudflare": {
     "bindings": {
       "OWNER_TOKEN": {
-        "description": "Owner sign-in token. Generate 32 random bytes as hex. Save it in a password manager."
+        "description": "Owner sign-in token. Run `openssl rand -hex 32` on a private terminal. Save it in a password manager. Reuse the existing token on updates."
       },
       "LOCKER_ENCRYPTION_KEY": {
-        "description": "Separate random 32-byte key, base64 encoded. Keep an offline backup."
+        "description": "Run `openssl rand -base64 32` separately on a private terminal. Keep an offline copy with key version 1. Never replace an existing key during deployment."
       }
     }
   }

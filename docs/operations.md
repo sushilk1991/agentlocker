@@ -56,13 +56,13 @@ settle. Unknown sends stay unknown. Apply migrations to the selected deployment,
 then deploy compatible code only after migrations succeed:
 
 ```sh
-npm run db:remote
-# Only after migration succeeds, use the release's verified deploy procedure.
+npm run deploy
 ```
 
-The current `npm run deploy` script is missing; use the explicit steps in the
-[deployment guide](deploy.md) for disposable checks. Migration failures stop the
-upgrade. Rerun the migration command after addressing the failure; it skips
+The deploy script applies remote migrations before uploading code and preserves
+the live deployment ID. Keep its selected bindings and `.agentlocker/` record.
+See the [deployment guide](deploy.md) for disposable checks. Migration failures
+stop the upgrade. Rerun deployment after addressing the failure; it skips
 applied migrations. Do not edit released migrations, delete migration tracking,
 or run destructive down-migrations to force an older Worker to start. A code
 rollback is valid only when it supports the resulting schema.

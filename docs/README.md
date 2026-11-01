@@ -39,10 +39,10 @@ lists, owner investigation, and policy/settings updates. SDK and CLI identity an
 list flows are tested against it. MCP uses the same shared identity service.
 
 The source packages are not published. Manual connection checks for named
-coding and personal agents remain open. The deployment, local-setup, and deployed
-smoke scripts named in package.json are missing. Use the documented local setup
-instead. The README button also needs the public repository URL. A fresh-account
-button test, deployed smoke test, and backup/restore drill remain release work.
+coding and personal agents remain open. Deployment, local setup, and smoke scripts
+are included. The README button targets the public GitHub repository. A fresh-account
+button test, deployed smoke test, controlled outbound and scheduled fallback smoke
+scenarios, and backup/restore drill remain release work.
 
 ## Design and contributing
 

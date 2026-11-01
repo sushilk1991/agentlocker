@@ -39,40 +39,43 @@ npx vitest run tests/<failing-file>.test.ts
 npm test
 ```
 
-Do not change app code for that error alone. A separate deployed smoke script
-is planned; `npm run test:smoke` currently points to a missing file. Nothing in
-the local checks proves a production deployment or backup/restore works.
+Do not change app code for that error alone. `npm run test:smoke` is opt-in and
+targets the exact URL and owner credential in the environment. A local smoke
+pass does not prove Cloudflare deployment or backup/restore works.
 
 ## Run a local locker
 
-`npm run setup:local` also points to a missing file. Until that script exists,
-create local settings with this command from the repository root. It writes an
-ignored file with mode 0600 and refuses to overwrite an existing file. It prints
-no credentials.
+Run setup from the repository root. It writes ignored `.dev.vars` with mode
+0600, refuses to overwrite it, and applies local D1 migrations. It prints no
+credentials. It creates fresh owner and encryption credentials and a deployment
+ID. The default trusted origin is exactly `http://localhost:8787`.
 
 ```sh
-node --input-type=module <<'NODE'
-import { randomBytes } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
-const values = {
-  OWNER_TOKEN: randomBytes(32).toString('hex'),
-  LOCKER_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
-  PUBLIC_ORIGIN: 'http://127.0.0.1:8787',
-  DEPLOYMENT_ID: randomBytes(16).toString('hex'),
-  ENCRYPTION_KEY_VERSION: '1',
-};
-writeFileSync('.dev.vars', Object.entries(values)
-  .map(([name, value]) => `${name}=${value}\n`).join(''),
-  { mode: 0o600, flag: 'wx' });
-NODE
-npm run db:local
-npm run dev -- --ip 127.0.0.1 --port 8787
+npm run setup:local
+npm run dev
 ```
 
-Open `http://127.0.0.1:8787`. Read `OWNER_TOKEN` from `.dev.vars` in your local
+Open `http://localhost:8787`. Read `OWNER_TOKEN` from `.dev.vars` in your local
 editor and enter it in the sign-in form. Confirm setup, create a disabled agent,
 add a narrow folder grant, issue a task token, and enable it. Use this exact
-origin; `localhost` is a different origin. Stop Wrangler with Ctrl-C when done.
+origin; `127.0.0.1` is a different origin. Stop Wrangler with Ctrl-C when done.
+
+For a disposable local smoke check, leave Wrangler running. In a second Bash
+terminal, read the token from your editor and enter it at the hidden prompt:
+
+```sh
+read -rsp 'Local owner token: ' AGENTLOCKER_OWNER_TOKEN
+export AGENTLOCKER_OWNER_TOKEN
+AGENTLOCKER_URL=http://localhost:8787 npm run test:smoke
+unset AGENTLOCKER_OWNER_TOKEN
+```
+
+Smoke confirms first-run setup if needed. It creates two disposable agents with
+disjoint grants, checks HTTP, SDK, MCP, approvals, restore, audit, and revocation,
+then disables agents and its secret, revokes tokens, and soft-deletes its files.
+It keeps audit and retained history. Use a disposable locker: changing grants
+can invalidate other pending approvals. No proxy request is sent. See the
+[deployment guide](deploy.md#smoke-check) for scope and remaining release checks.
 
 Wrangler stores local data under `.wrangler/state`. Keep `.dev.vars` and this
 state together between runs. Replacing the encryption key or deployment ID
@@ -82,7 +85,10 @@ not usable credentials. Never copy production credentials into it.
 The Wrangler config sets both storage bindings to local development. Do not use
 `wrangler dev --remote`, remote binding overrides, or `npm run db:remote` here.
 If you need another origin or port, change the local `PUBLIC_ORIGIN` explicitly
-and restart. The app does not learn a trusted origin from incoming requests.
+and restart. Before first setup, you can instead set `AGENTLOCKER_LOCAL_ORIGIN`
+when running `npm run setup:local`. Only HTTP localhost and 127.0.0.1 are accepted.
+If migrations fail after the file is written, keep it and run `npm run db:local`.
+The app does not learn a trusted origin from incoming requests.
 
 ## Change an interface
 
