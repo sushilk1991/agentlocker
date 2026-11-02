@@ -28,7 +28,7 @@
     }
   ],
 
-  // The Worker runs first so every asset receives origin checks and strict CSP.
+  // Run first for HTTPS redirects, then asset origin checks and strict CSP.
   "assets": { "directory": "./dist-web", "binding": "ASSETS", "run_worker_first": true },
 
   // Expiry/dispatch each minute; bounded file cleanup at most hourly.

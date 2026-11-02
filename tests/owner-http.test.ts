@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { experimental_readRawConfig } from 'wrangler';
 import { database } from './helpers';
 
 let f: Awaited<ReturnType<typeof database>>;
@@ -11,6 +12,36 @@ const request = (route: string, method = 'GET', body?: unknown, headers: Record<
 describe('owner routes in the bundled Worker', () => {
  beforeAll(async () => { f = await database(true, true); await f.db.prepare('DELETE FROM settings').run(); });
  afterAll(async () => { await f?.runtime.dispose(); });
+ it('runs the Worker before static assets so they cannot bypass HTTPS redirects', () => {
+  const {rawConfig} = experimental_readRawConfig({config: 'wrangler.jsonc'});
+  expect(rawConfig.assets?.run_worker_first).toBe(true);
+ });
+ it('redirects public HTTP before page, asset, health, API, and MCP handling and preserves the URL', async () => {
+  const page = await f.runtime.dispatchFetch('https://locker.example.com/');
+  const script = (await page.text()).match(/src="([^"]+\.js)"/)![1];
+  for (const path of ['/', '/approvals', script, '/healthz', '/api/v1/owner/session', '/mcp', '/missing%20path%2Ffile']) {
+   for (const method of ['GET', 'HEAD', 'POST']) {
+    const url = 'http://locker.example.com' + path + '?path=%2Fwork%2Fa%20b&tag=one+two&tag=three&empty=';
+    const response = await f.runtime.dispatchFetch(url, {method, redirect: 'manual'});
+    expect(response.status).toBe(308);
+    expect(response.headers.get('location')).toBe(url.replace('http:', 'https:'));
+    expect(await response.text()).toBe('');
+   }
+  }
+  for (const host of ['localhost.example.com', 'notlocalhost', '127.0.0.2', '[::2]', 'locker.example.com:8080']) {
+   const response = await f.runtime.dispatchFetch(`http://${host}/healthz`, {redirect: 'manual'});
+   expect(response.status).toBe(308);
+   expect(response.headers.get('location')).toBe(`https://${host}/healthz`);
+  }
+ });
+ it('keeps local HTTP health requests available without redirecting', async () => {
+  for (const host of ['localhost', '127.0.0.1', '[::1]', 'app.localhost', 'nested.app.localhost', 'LOCALHOST']) {
+   const response = await f.runtime.dispatchFetch(`http://${host}:8787/healthz?local=1`, {redirect: 'manual'});
+   expect(response.status).toBe(200);
+   expect(response.headers.get('location')).toBeNull();
+   expect(await response.text()).toBe('ok');
+  }
+ });
  it('serves public sign-in assets without private state and uses authenticated, atomic setup', async () => {
   const page = await f.runtime.dispatchFetch('https://locker.example.com/');
   expect(page.status).toBe(200); expect(await page.text()).toContain('Agent Locker');

@@ -44,11 +44,16 @@ function dispatch(c: Context,id: string) {
 }
 
 export async function handleRequest(request: Request, env: Env, ctx: ExecutionContext) {
+ const url = new URL(request.url);
+ const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.hostname.endsWith('.localhost');
+ if (url.protocol === 'http:' && !local) {
+  url.protocol = 'https:';
+  return Response.redirect(url.href, 308);
+ }
  const c: Context = {env, ctx, actor: {kind: 'anonymous', name: 'Anonymous'}, requestId: opaqueId()};
  let target = '/', operation = 'files.request';
  let response: Response;
  try {
-  const url = new URL(request.url);
   if (url.pathname === '/healthz' && request.method === 'GET') return new Response('ok');
   const asset = await staticAsset(request,env);
   if (asset) return asset;
